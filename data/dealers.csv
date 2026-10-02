@@ -1,0 +1,41 @@
+dealer_id,dealer_name,city,state,region,size_class,opened_year
+101,Oakwood Vertex Motors,Columbus,PA,Northeast,Medium,2004
+102,Cedar Point Vertex Auto,Chicago,TN,Southeast,Large,1998
+103,Westfield Vertex Auto,Charlotte,OH,Midwest,Medium,1988
+104,Riverbend Vertex Automotive,Hartford,NM,Southwest,Small,1998
+105,Eastside Vertex Auto,Sacramento,CA,West,Large,2003
+106,Metro Vertex Automotive,Seattle,PA,Northeast,Small,1997
+107,Metro Vertex Automotive,Sacramento,TN,Southeast,Medium,1997
+108,Ridgeway Vertex Automotive,Columbus,IL,Midwest,Medium,1996
+109,Cedar Point Vertex Motors,Hartford,OK,Southwest,Large,2008
+110,Oakwood Vertex Auto,Sacramento,CA,West,Small,2011
+111,Oakwood Vertex Motors,Columbus,NY,Northeast,Medium,2001
+112,Sunset Vertex Auto,Detroit,SC,Southeast,Medium,2005
+113,Northgate Vertex Automotive,Charlotte,OH,Midwest,Medium,1995
+114,Cedar Point Vertex Motors,Las Vegas,AZ,Southwest,Large,1995
+115,Ridgeway Vertex Auto,Seattle,OR,West,Medium,2000
+116,Oakwood Vertex Automotive,Hartford,CT,Northeast,Small,2002
+117,Riverbend Vertex Auto,Portland,SC,Southeast,Medium,1991
+118,Eastside Vertex Motors,Denver,IL,Midwest,Medium,1989
+119,Eastside Vertex Automotive,Orlando,AZ,Southwest,Large,1994
+120,Lakeside Vertex Motors,Portland,NV,West,Medium,2018
+121,Pioneer Vertex Auto,Tampa,PA,Northeast,Small,2002
+122,Heritage Vertex Auto,Atlanta,TN,Southeast,Large,2006
+123,Ridgeway Vertex Motors,Sacramento,OH,Midwest,Small,1991
+124,Oakwood Vertex Motors,Phoenix,AZ,Southwest,Small,2019
+125,Sunset Vertex Motors,Orlando,CO,West,Medium,2000
+126,Ridgeway Vertex Auto,Portland,NJ,Northeast,Large,2019
+127,Sunset Vertex Auto,Chicago,FL,Southeast,Medium,2016
+128,Northgate Vertex Motors,Phoenix,MI,Midwest,Small,2005
+129,Lakeside Vertex Automotive,Albany,AZ,Southwest,Medium,2019
+130,Crossroads Vertex Motors,Atlanta,NV,West,Small,2005
+131,Metro Vertex Motors,Las Vegas,NJ,Northeast,Large,2008
+132,Riverbend Vertex Motors,Chicago,GA,Southeast,Medium,1986
+133,Valley Vertex Automotive,Tulsa,IL,Midwest,Large,1993
+134,Metro Vertex Auto,Seattle,OK,Southwest,Medium,1998
+135,Lakeside Vertex Automotive,Charlotte,CO,West,Medium,1986
+136,Metro Vertex Auto,Albany,PA,Northeast,Large,2017
+137,Crossroads Vertex Auto,Chicago,FL,Southeast,Medium,2001
+138,Summit Vertex Automotive,Orlando,OH,Midwest,Small,1989
+139,Northgate Vertex Automotive,Milwaukee,AZ,Southwest,Medium,1985
+140,Sunset Vertex Automotive,Erie,NV,West,Medium,1999
