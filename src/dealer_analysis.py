@@ -1,10 +1,12 @@
 import pandas as pd
+MONTH = "2026-09"
+ALERT_THRESHOLD = 80
 
 sales = pd.read_csv("data/sales_monthly.csv")
 targets = pd.read_csv("data/dealer_targets.csv")
 dealers = pd.read_csv("data/dealers.csv")
 
-september_sales = sales[sales["month"] == "2026-09"]
+september_sales = sales[sales["month"] == MONTH]
 
 dealer_sales = (
     september_sales.groupby("dealer_id", as_index=False)["units_sold"]
@@ -12,17 +14,19 @@ dealer_sales = (
     )
 
 september_targets = targets[
-    targets["month"] == "2026-09"
+    targets["month"] == MONTH
 ][["dealer_id", "target_units"]]
 
 performance = dealer_sales.merge(
     september_targets,
-    on="dealer_id"
+    on="dealer_id",
+    validate="one_to_one"
 )
 
 performance = performance.merge(
     dealers[["dealer_id", "dealer_name"]],
-    on="dealer_id"
+    on="dealer_id",
+    validate="one_to_one"
 )
 
 performance["achievement_pct"] = (
@@ -55,7 +59,7 @@ print("\nDEALERS NEEDING ATTENTION (<80% OF TARGET)")
 print("-" * 50)
 
 needs_attention = performance[
-    performance["achievement_pct"] < 80
+    performance["achievement_pct"] < ALERT_THRESHOLD
 ]
 
 print(
