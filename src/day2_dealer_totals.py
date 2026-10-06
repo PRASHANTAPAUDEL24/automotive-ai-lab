@@ -47,12 +47,12 @@ for row in sales_rows:
 
 
 
-target_by_dealer = {}
+targets_by_dealer = {}
 
 for row in target_rows:
     if row["month"] == MONTH:
         dealer_id = row["dealer_id"]
-        target_by_dealer[dealer_id] = int(row["target_units"])
+        targets_by_dealer[dealer_id] = int(row["target_units"])
 
 
 names_by_dealer = {}
@@ -70,7 +70,7 @@ attention_count = 0
 
 for dealer_id, name in names_by_dealer.items():
     sales = sales_by_dealer.get(dealer_id, 0)
-    target = target_by_dealer.get(dealer_id, 0)
+    target = targets_by_dealer.get(dealer_id, 0)
 
     achievement = calculate_achievement(sales, target)
     status = get_performance_status(achievement)
@@ -84,3 +84,10 @@ for dealer_id, name in names_by_dealer.items():
         print(f"{name}: {achievement:.1f}% - {status}")
 
 print(f"\nDealers needing attention: {attention_count}")
+
+unknown = set(sales_by_dealer) - set(names_by_dealer)
+
+print(
+    "Dealer IDs in sales but not in dealers.csv:",
+    unknown
+)
