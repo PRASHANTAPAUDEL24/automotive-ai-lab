@@ -27,17 +27,31 @@ The dataset includes:
 
 ## Progress
 
-- [x] Day 1: September 2026 dealer performance vs. target analysis
-- [x] Day 1: Management alert for dealers below 80% of target
-- [ ] Day 2: Python fundamentals using dealer operations
+## Progress
+- [x] Day 1: September dealer performance vs. target (pandas)
+- [x] Day 2: Same report in plain Python (csv module), with data-integrity check
+- [x] Day 3: Inventory aging, months of supply, overstock flags
+- [ ] Day 4: Combined dealer scorecard
 - [ ] Week 2: SQL and PostgreSQL
 - [ ] Week 3: FastAPI
 - [ ] Week 4: Automotive Dealer Analytics API
-- [ ] Later: LLM APIs, RAG, agents, Docker, and Azure
+- [ ] Later: LLM APIs, RAG, agents, Docker, Azure
 
-## How to Run
+## Project structure
+- `scripts/generate_dealer_data.py` creates the synthetic dataset
+- `data/` holds the generated CSV files
+- `src/` holds the analysis scripts, one per day
 
-Install dependencies:
-
-```bash
+## How to run
 pip install -r requirements.txt
+python scripts/generate_dealer_data.py
+python src/day3_inventory_aging.py
+
+## Definitions
+- Available inventory: vehicles with status "In Stock" (excludes In Transit and Hold)
+- Aged: more than 90 days in stock
+- Overstock candidate: more than 4 months of supply and more than 30% aged
+
+## Sample findings (September 2026, synthetic data)
+- 12 of 40 dealers are below 80% of their sales target
+- 9 dealers are flagged as overstock candidates
