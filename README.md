@@ -26,8 +26,6 @@ The dataset includes:
 - Inventory snapshot
 
 ## Progress
-
-## Progress
 - [x] Day 1: September dealer performance vs. target (pandas)
 - [x] Day 2: Same report in plain Python (csv module), with data-integrity check
 - [x] Day 3: Inventory aging, months of supply, overstock flags
@@ -43,9 +41,11 @@ The dataset includes:
 - `src/` holds the analysis scripts, one per day
 
 ## How to run
+```
 pip install -r requirements.txt
 python scripts/generate_dealer_data.py
 python src/day3_inventory_aging.py
+```
 
 ## Definitions
 - Available inventory: vehicles with status "In Stock" (excludes In Transit and Hold)
