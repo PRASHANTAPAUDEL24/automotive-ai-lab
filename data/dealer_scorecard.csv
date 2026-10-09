@@ -1,0 +1,41 @@
+dealer_id,dealer_name,region,size_class,units_sold,target_units,achievement_pct,available_units,aged_units,aged_pct,months_of_supply,sales_risk,inventory_risk,combined_risk,early_overstock_watch,missing_target
+111,Buffalo Sunset Vertex Automotive,Northeast,Medium,24,32,75.0,129,43,33.3,5.4,True,True,True,False,False
+140,Denver Northgate Vertex Auto,West,Medium,37,32,115.6,248,79,31.9,6.7,False,True,False,False,False
+123,Detroit Westfield Vertex Motors,Midwest,Small,19,19,100.0,113,43,38.1,5.9,False,True,False,False,False
+138,Indianapolis Valley Vertex Motors,Midwest,Small,20,19,105.3,109,35,32.1,5.4,False,True,False,False,False
+139,Dallas Pioneer Vertex Motors,Southwest,Medium,40,32,125.0,195,65,33.3,4.9,False,True,False,False,False
+114,Albuquerque Riverbend Vertex Automotive,Southwest,Large,70,55,127.3,332,110,33.1,4.7,False,True,False,False,False
+136,Boston Northgate Vertex Motors,Northeast,Large,65,55,118.2,293,95,32.4,4.5,False,True,False,False,False
+107,Atlanta Pioneer Vertex Motors,Southeast,Medium,39,32,121.9,170,57,33.5,4.4,False,True,False,False,False
+125,Spokane Westfield Vertex Motors,West,Medium,37,32,115.6,150,50,33.3,4.1,False,True,False,False,False
+102,Orlando Crossroads Vertex Motors,Southeast,Large,22,55,40.0,129,31,24.0,5.9,True,False,False,True,False
+105,San Diego Harbor View Vertex Auto,West,Large,35,55,63.6,195,57,29.2,5.6,True,False,False,True,False
+130,Seattle Eastside Vertex Automotive,West,Small,5,19,26.3,23,1,4.3,4.6,True,False,False,True,False
+104,San Antonio Ridgeway Vertex Automotive,Southwest,Small,9,19,47.4,28,1,3.6,3.1,True,False,False,False,False
+131,Philadelphia Heritage Vertex Automotive,Northeast,Large,32,55,58.2,91,7,7.7,2.8,True,False,False,False,False
+133,Cleveland Lakeside Vertex Automotive,Midwest,Large,25,55,45.5,68,6,8.8,2.7,True,False,False,False,False
+101,Syracuse Ridgeway Vertex Auto,Northeast,Medium,16,32,50.0,39,3,7.7,2.4,True,False,False,False,False
+137,Charlotte Harbor View Vertex Automotive,Southeast,Medium,16,32,50.0,39,2,5.1,2.4,True,False,False,False,False
+128,Columbus Westfield Vertex Auto,Midwest,Small,14,19,73.7,29,1,3.4,2.1,True,False,False,False,False
+112,Raleigh Crossroads Vertex Auto,Southeast,Medium,21,32,65.6,39,2,5.1,1.9,True,False,False,False,False
+134,Tucson Westfield Vertex Motors,Southwest,Medium,21,32,65.6,36,4,11.1,1.7,True,False,False,False,False
+116,Worcester Ridgeway Vertex Auto,Northeast,Small,21,19,110.5,112,29,25.9,5.3,False,False,False,False,False
+103,Milwaukee Sunset Vertex Automotive,Midwest,Medium,30,32,93.8,72,5,6.9,2.4,False,False,False,False,False
+115,Reno Northgate Vertex Auto,West,Medium,28,32,87.5,60,12,20.0,2.1,False,False,False,False,False
+106,Newark Northgate Vertex Motors,Northeast,Small,18,19,94.7,31,2,6.5,1.7,False,False,False,False,False
+119,Austin Summit Vertex Automotive,Southwest,Large,52,55,94.5,86,8,9.3,1.7,False,False,False,False,False
+135,Sacramento Oakwood Vertex Motors,West,Medium,26,32,81.2,43,5,11.6,1.7,False,False,False,False,False
+110,Las Vegas Metro Vertex Auto,West,Small,22,19,115.8,35,6,17.1,1.6,False,False,False,False,False
+118,Chicago Crossroads Vertex Auto,Midwest,Medium,30,32,93.8,47,4,8.5,1.6,False,False,False,False,False
+127,Charleston Harbor View Vertex Automotive,Southeast,Medium,28,32,87.5,45,1,2.2,1.6,False,False,False,False,False
+108,Grand Rapids Heritage Vertex Automotive,Midwest,Medium,29,32,90.6,43,4,9.3,1.5,False,False,False,False,False
+129,Phoenix Riverbend Vertex Motors,Southwest,Medium,29,32,90.6,44,0,0.0,1.5,False,False,False,False,False
+113,Madison Summit Vertex Auto,Midwest,Medium,42,32,131.2,60,7,11.7,1.4,False,False,False,False,False
+120,Los Angeles Summit Vertex Motors,West,Medium,31,32,96.9,43,3,7.0,1.4,False,False,False,False,False
+121,Albany Valley Vertex Automotive,Northeast,Small,19,19,100.0,27,3,11.1,1.4,False,False,False,False,False
+124,Oklahoma City Ridgeway Vertex Automotive,Southwest,Small,25,19,131.6,36,4,11.1,1.4,False,False,False,False,False
+117,Jacksonville Cedar Point Vertex Automotive,Southeast,Medium,38,32,118.8,50,4,8.0,1.3,False,False,False,False,False
+122,Tampa Oakwood Vertex Motors,Southeast,Large,58,55,105.5,74,6,8.1,1.3,False,False,False,False,False
+109,Houston Sunset Vertex Motors,Southwest,Large,61,55,110.9,74,7,9.5,1.2,False,False,False,False,False
+126,Hartford Valley Vertex Automotive,Northeast,Large,69,55,125.5,84,12,14.3,1.2,False,False,False,False,False
+132,Greenville Metro Vertex Auto,Southeast,Medium,29,32,90.6,34,4,11.8,1.2,False,False,False,False,False
