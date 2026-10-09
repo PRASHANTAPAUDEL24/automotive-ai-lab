@@ -32,7 +32,7 @@ The dataset includes:
 - [x] Day 1: September dealer performance vs. target using pandas
 - [x] Day 2: Same analysis using plain Python and the `csv` module, with data-integrity checks
 - [x] Day 3: Inventory aging, months of supply, and inventory-risk flags
-- [x] Day 4: Combined dealer scorecard with sales and inventory risk
+- [x] Day 4: Combined dealer scorecard with sales and inventory risk flags
 - [ ] Week 2: SQL and PostgreSQL
 - [ ] Week 3: FastAPI
 - [ ] Week 4: Automotive Dealer Analytics API
