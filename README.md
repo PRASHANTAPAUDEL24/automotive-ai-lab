@@ -33,7 +33,7 @@ The dataset includes:
 - [x] Day 2: Same analysis using plain Python and the `csv` module, with data-integrity checks
 - [x] Day 3: Inventory aging, months of supply, and inventory-risk flags
 - [x] Day 4: Combined dealer scorecard with sales and inventory risk flags
-- [ ] Week 2: SQL and PostgreSQL
+- [x] Week 2 started: PostgreSQL schema, CSV data load, and September dealer performance query
 - [ ] Week 3: FastAPI
 - [ ] Week 4: Automotive Dealer Analytics API
 - [ ] Later: LLM APIs, RAG, agents, Docker, Azure
@@ -43,15 +43,11 @@ The dataset includes:
 - `scripts/generate_dealer_data.py` generates the synthetic dataset
 - `data/` contains generated CSV files and the dealer scorecard output
 - `src/` contains the analysis scripts developed during each stage
+- `sql/` contains the PostgreSQL schema, loader, and SQL analysis queries
 
 ## How to Run
 
-## How to run
-```
-pip install -r requirements.txt
-python scripts/generate_dealer_data.py
-python src/day3_inventory_aging.py
-```
+Install dependencies:
 
 ```bash
 pip install -r requirements.txt
@@ -77,6 +73,19 @@ Day 4 generates:
 
 ```text
 data/dealer_scorecard.csv
+```
+
+## PostgreSQL
+
+Run the schema first, then the loader, in that order.
+
+> Re-running `sql/01_schema.sql` resets the database because it drops and recreates the tables.
+
+```bash
+psql automotive_ai_lab -f sql/01_schema.sql
+psql automotive_ai_lab -f sql/02_load.sql
+psql -P pager=off automotive_ai_lab -f sql/day5_dealer_performance.sql
+psql -P pager=off automotive_ai_lab -f sql/day5_dealer_status_cte.sql
 ```
 
 ## Definitions
@@ -112,3 +121,4 @@ For September 2026 synthetic data:
 - **Dealer Analytics API:** expose dealer performance and inventory-risk metrics through an API.
 - **Supply Chain Risk Assistant:** analyze sourcing, inventory, logistics, and supplier risks.
 - **Dealer Operations Copilot:** combine structured dealer data with LLM-based decision support.
+\ No newline at end of file
