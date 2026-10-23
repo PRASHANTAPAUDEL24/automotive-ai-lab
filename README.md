@@ -29,11 +29,15 @@ The dataset includes:
 
 ## Progress
 
+> “Day” labels represent project milestones rather than consecutive calendar days.
+
 - [x] Day 1: September dealer performance vs. target using pandas
 - [x] Day 2: Same analysis using plain Python and the `csv` module, with data-integrity checks
 - [x] Day 3: Inventory aging, months of supply, and inventory-risk flags
 - [x] Day 4: Combined dealer scorecard with sales and inventory risk flags
-- [x] Week 2 started: PostgreSQL schema, CSV data load, and September dealer performance query
+- [x] Day 5: PostgreSQL schema, CSV data load, and September dealer performance queries
+- [x] Day 6: Inventory aging, months of supply, and inventory-risk analysis in PostgreSQL
+- [ ] Day 7: Combined dealer scorecard in PostgreSQL
 - [ ] Week 3: FastAPI
 - [ ] Week 4: Automotive Dealer Analytics API
 - [ ] Later: LLM APIs, RAG, agents, Docker, Azure
@@ -86,13 +90,15 @@ psql automotive_ai_lab -f sql/01_schema.sql
 psql automotive_ai_lab -f sql/02_load.sql
 psql -P pager=off automotive_ai_lab -f sql/day5_dealer_performance.sql
 psql -P pager=off automotive_ai_lab -f sql/day5_dealer_status_cte.sql
+psql -P pager=off automotive_ai_lab -f sql/day6_inventory_aging.sql
 ```
 
 ## Definitions
 
 - **Available inventory:** vehicles with status `"In Stock"`; excludes `In Transit` and `Hold`
 - **Aged inventory:** available vehicles with more than 90 days in stock
-- **Months of supply:** available units divided by September units sold
+- **Months of supply:** available units divided by September units sold. If both are zero, months of supply is 0.
+- **Zero-sales inventory rule:** if a dealer has available inventory but zero September sales, months of supply is undefined (`NULL` in SQL, infinity in Python) and the dealer is treated as high supply. It is flagged as inventory-risk only if more than 30% of its available units are also aged. No dealer in the current dataset triggers this case.
 - **Sales risk:** achievement below 80% of the September sales target
 - **Inventory risk:** more than 4 months of supply and more than 30% aged inventory
 - **Combined risk:** both sales risk and inventory risk
@@ -121,4 +127,3 @@ For September 2026 synthetic data:
 - **Dealer Analytics API:** expose dealer performance and inventory-risk metrics through an API.
 - **Supply Chain Risk Assistant:** analyze sourcing, inventory, logistics, and supplier risks.
 - **Dealer Operations Copilot:** combine structured dealer data with LLM-based decision support.
-\ No newline at end of file
