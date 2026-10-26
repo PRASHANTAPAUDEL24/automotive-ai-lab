@@ -37,7 +37,7 @@ The dataset includes:
 - [x] Day 4: Combined dealer scorecard with sales and inventory risk flags
 - [x] Day 5: PostgreSQL schema, CSV data load, and September dealer performance queries
 - [x] Day 6: Inventory aging, months of supply, and inventory-risk analysis in PostgreSQL
-- [ ] Day 7: Combined dealer scorecard in PostgreSQL
+- [x] Day 7: Combined dealer scorecard in PostgreSQL
 - [ ] Week 3: FastAPI
 - [ ] Week 4: Automotive Dealer Analytics API
 - [ ] Later: LLM APIs, RAG, agents, Docker, Azure
@@ -88,9 +88,18 @@ Run the schema first, then the loader, in that order.
 ```bash
 psql automotive_ai_lab -f sql/01_schema.sql
 psql automotive_ai_lab -f sql/02_load.sql
+psql automotive_ai_lab -f sql/03_views.sql
 psql -P pager=off automotive_ai_lab -f sql/day5_dealer_performance.sql
 psql -P pager=off automotive_ai_lab -f sql/day5_dealer_status_cte.sql
 psql -P pager=off automotive_ai_lab -f sql/day6_inventory_aging.sql
+psql -P pager=off automotive_ai_lab -f sql/day7_dealer_scorecard.sql
+```
+
+Export the SQL flags and compare them with the Day 4 pandas scorecard. Run `src/day4_dealer_scorecard.py` first so `data/dealer_scorecard.csv` exists.
+
+```bash
+psql automotive_ai_lab -c "\copy (SELECT dealer_id, sales_risk, inventory_risk, combined_risk, early_overstock_watch FROM dealer_scorecard ORDER BY dealer_id) TO 'data/dealer_scorecard_sql.csv' CSV HEADER"
+python src/day7_compare_scorecards.py
 ```
 
 ## Definitions
@@ -116,11 +125,16 @@ For September 2026 synthetic data:
 - Inventory-risk dealers are 5 Medium, 2 Large, and 2 Small, compared with a network mix of 20 Medium, 10 Large, and 10 Small.
 - Dealer size does not appear to explain inventory risk in this dataset.
 
+## Validation
+
+The PostgreSQL scorecard was cross-checked against the Day 4 pandas scorecard. All four risk flags matched for all 40 dealers.
+
 ## Limitations
 
 - All data is synthetic, so the findings demonstrate the analytical method, not real-world conclusions.
 - Months of supply currently uses September sales only.
 - The 80%, 90-day, 4-month, and 30% thresholds are business-rule assumptions and should be validated and tuned with stakeholders in a real deployment.
+- PostgreSQL views are currently fixed to September 2026; future API work will need month-parameterized logic.
 
 ## Planned Projects
 
