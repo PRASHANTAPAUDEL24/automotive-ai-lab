@@ -38,6 +38,7 @@ The dataset includes:
 - [x] Day 5: PostgreSQL schema, CSV data load, and September dealer performance queries
 - [x] Day 6: Inventory aging, months of supply, and inventory-risk analysis in PostgreSQL
 - [x] Day 7: Combined dealer scorecard in PostgreSQL
+- [x] Day 8: Read the PostgreSQL scorecard into pandas with SQLAlchemy and validate counts
 - [ ] Week 3: FastAPI
 - [ ] Week 4: Automotive Dealer Analytics API
 - [ ] Later: LLM APIs, RAG, agents, Docker, Azure
@@ -100,6 +101,15 @@ Export the SQL flags and compare them with the Day 4 pandas scorecard. Run `src/
 ```bash
 psql automotive_ai_lab -c "\copy (SELECT dealer_id, sales_risk, inventory_risk, combined_risk, early_overstock_watch FROM dealer_scorecard ORDER BY dealer_id) TO 'data/dealer_scorecard_sql.csv' CSV HEADER"
 python src/day7_compare_scorecards.py
+```
+
+## Python and PostgreSQL
+
+Set the PostgreSQL connection string in the environment before running Day 8:
+
+```bash
+export DATABASE_URL="postgresql+psycopg://<user>@localhost:5432/automotive_ai_lab"
+python src/day8_read_scorecard.py
 ```
 
 ## Definitions
