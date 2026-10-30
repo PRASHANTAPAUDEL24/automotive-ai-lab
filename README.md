@@ -39,6 +39,7 @@ The dataset includes:
 - [x] Day 6: Inventory aging, months of supply, and inventory-risk analysis in PostgreSQL
 - [x] Day 7: Combined dealer scorecard in PostgreSQL
 - [x] Day 8: Read the PostgreSQL scorecard into pandas with SQLAlchemy and validate counts
+- [x] Day 9: Reusable, parameterized scorecard queries in Python
 - [ ] Week 3: FastAPI
 - [ ] Week 4: Automotive Dealer Analytics API
 - [ ] Later: LLM APIs, RAG, agents, Docker, Azure
@@ -112,6 +113,9 @@ export DATABASE_URL="postgresql+psycopg://<user>@localhost:5432/automotive_ai_la
 python src/day8_read_scorecard.py
 ```
 
+```bash
+python src/day9_query_scorecard.py
+```
 ## Definitions
 
 - **Available inventory:** vehicles with status `"In Stock"`; excludes `In Transit` and `Hold`
