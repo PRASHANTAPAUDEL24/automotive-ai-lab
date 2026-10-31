@@ -2,3 +2,8 @@ pandas
 numpy
 sqlalchemy
 psycopg[binary]
+fastapi
+uvicorn[standard]
+httpx2
+pytest
+printf '\n' >> requirements.txt

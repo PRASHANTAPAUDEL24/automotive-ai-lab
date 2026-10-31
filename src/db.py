@@ -12,6 +12,10 @@ import pandas as pd
 from sqlalchemy import create_engine, text
 
 
+class InvalidFilterError(ValueError):
+    """Raised when a caller passes an unsupported filter value."""
+
+
 ALLOWED_RISKS = {
     "sales_risk",
     "inventory_risk",
@@ -41,7 +45,7 @@ def get_scorecard(region=None, risk=None):
     Region matching is exact and case-sensitive.
     An unknown region returns an empty DataFrame.
     Risk must be one of the allowed risk-column names;
-    otherwise, ValueError is raised.
+    otherwise, InvalidFilterError is raised.
     """
     # Start with the reusable dealer scorecard view.
     query = "SELECT * FROM dealer_scorecard"
@@ -57,9 +61,7 @@ def get_scorecard(region=None, risk=None):
     # before inserting it into the SQL text.
     if risk is not None:
         if risk not in ALLOWED_RISKS:
-            raise ValueError(
-                f"Invalid risk filter: {risk}"
-            )
+            raise InvalidFilterError(f"Invalid risk filter: {risk}")
 
         conditions.append(f"{risk} = TRUE")
 
