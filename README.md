@@ -40,6 +40,7 @@ The dataset includes:
 - [x] Day 7: Combined dealer scorecard in PostgreSQL
 - [x] Day 8: Read the PostgreSQL scorecard into pandas with SQLAlchemy and validate counts
 - [x] Day 9: Reusable, parameterized scorecard queries in Python
+- [x] Day 10: FastAPI health and dealer endpoints with safe filtering and automated tests
 - [ ] Week 3: FastAPI
 - [ ] Week 4: Automotive Dealer Analytics API
 - [ ] Later: LLM APIs, RAG, agents, Docker, Azure
@@ -48,14 +49,16 @@ The dataset includes:
 
 - `scripts/generate_dealer_data.py` generates the synthetic dataset
 - `data/` contains generated CSV files and the dealer scorecard output
-- `src/` contains the analysis scripts developed during each stage
+- `src/` contains the analysis scripts, the reusable database module (`db.py`) and the FastAPI app (`api.py`)
 - `sql/` contains the PostgreSQL schema, loader, and SQL analysis queries
 
 ## How to Run
 
-Install dependencies:
+Create and activate a virtual environment, then install dependencies:
 
 ```bash
+python -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
@@ -113,9 +116,51 @@ export DATABASE_URL="postgresql+psycopg://<user>@localhost:5432/automotive_ai_la
 python src/day8_read_scorecard.py
 ```
 
+Run the parameterized query tests:
+
 ```bash
 python src/day9_query_scorecard.py
 ```
+
+## API
+
+With the virtual environment active, set the database connection:
+
+```bash
+export DATABASE_URL="postgresql+psycopg://<user>@localhost:5432/automotive_ai_lab"
+```
+
+The `export` only lasts for the current terminal window, so run it again in each new terminal.
+
+The PostgreSQL database must be built first (see the PostgreSQL section above).
+
+Run the API tests:
+
+```bash
+python src/day10_test_api.py
+```
+
+Start the API (press Ctrl+C to stop it):
+
+```bash
+uvicorn api:app --reload --app-dir src
+```
+
+Interactive documentation is available at http://127.0.0.1:8000/docs.
+
+| Endpoint | Description |
+|---|---|
+| `GET /health` | Confirms the API is running |
+| `GET /dealers` | Returns the dealer scorecard. Optional filters: `region` (for example `West`) and `risk` (`sales_risk`, `inventory_risk`, `combined_risk` or `early_overstock_watch`) |
+
+Example:
+
+```bash
+curl "http://127.0.0.1:8000/dealers?region=West&risk=early_overstock_watch"
+```
+
+An unsupported `risk` value returns HTTP 400. An unknown `region` returns an empty list.
+
 ## Definitions
 
 - **Available inventory:** vehicles with status `"In Stock"`; excludes `In Transit` and `Hold`
