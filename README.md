@@ -41,6 +41,7 @@ The dataset includes:
 - [x] Day 8: Read the PostgreSQL scorecard into pandas with SQLAlchemy and validate counts
 - [x] Day 9: Reusable, parameterized scorecard queries in Python
 - [x] Day 10: FastAPI health and dealer endpoints with safe filtering and automated tests
+- [x] Day 11: Pytest coverage for database queries and FastAPI endpoints
 - [ ] Week 3: FastAPI
 - [ ] Week 4: Automotive Dealer Analytics API
 - [ ] Later: LLM APIs, RAG, agents, Docker, Azure
@@ -49,8 +50,10 @@ The dataset includes:
 
 - `scripts/generate_dealer_data.py` generates the synthetic dataset
 - `data/` contains generated CSV files and the dealer scorecard output
-- `src/` contains the analysis scripts, the reusable database module (`db.py`) and the FastAPI app (`api.py`)
-- `sql/` contains the PostgreSQL schema, loader, and SQL analysis queries
+- `src/` contains the analysis scripts, reusable database module (`db.py`), and FastAPI app (`api.py`)
+- `sql/` contains the PostgreSQL schema, loader, views, and SQL analysis queries
+- `tests/` contains pytest coverage for the database/query layer and FastAPI endpoints
+- `pytest.ini` configures pytest discovery and adds `src/` to the Python import path
 
 ## How to Run
 
@@ -109,17 +112,11 @@ python src/day7_compare_scorecards.py
 
 ## Python and PostgreSQL
 
-Set the PostgreSQL connection string in the environment before running Day 8:
+Set the PostgreSQL connection string in the environment before running Python code that connects to PostgreSQL:
 
 ```bash
 export DATABASE_URL="postgresql+psycopg://<user>@localhost:5432/automotive_ai_lab"
 python src/day8_read_scorecard.py
-```
-
-Run the parameterized query tests:
-
-```bash
-python src/day9_query_scorecard.py
 ```
 
 ## API
@@ -133,12 +130,6 @@ export DATABASE_URL="postgresql+psycopg://<user>@localhost:5432/automotive_ai_la
 The `export` only lasts for the current terminal window, so run it again in each new terminal.
 
 The PostgreSQL database must be built first (see the PostgreSQL section above).
-
-Run the API tests:
-
-```bash
-python src/day10_test_api.py
-```
 
 Start the API (press Ctrl+C to stop it):
 
@@ -160,6 +151,35 @@ curl "http://127.0.0.1:8000/dealers?region=West&risk=early_overstock_watch"
 ```
 
 An unsupported `risk` value returns HTTP 400. An unknown `region` returns an empty list.
+
+## Testing
+
+The pytest suite includes integration tests for the reusable PostgreSQL query layer and FastAPI endpoints.
+
+The PostgreSQL database, tables, data, and views must be built before running the integration tests.
+
+Activate the virtual environment and set the database connection:
+
+```bash
+source .venv/bin/activate
+export DATABASE_URL="postgresql+psycopg://<user>@localhost:5432/automotive_ai_lab"
+```
+
+Run the full test suite from the repository root:
+
+```bash
+pytest -v
+```
+
+The current test suite covers:
+
+- database queries and expected business-rule results
+- region and risk filtering
+- combined filters
+- API endpoints and response behavior
+- client and server error handling
+- injection-safety checks
+- JSON-safe missing-value conversion
 
 ## Definitions
 
