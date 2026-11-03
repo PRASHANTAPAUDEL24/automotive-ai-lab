@@ -8,8 +8,8 @@
 import pandas as pd
 from fastapi.testclient import TestClient
 
-from api import app, to_records
-from db import get_engine
+from api import app
+from db import get_engine, to_records
 
 client = TestClient(app)
 
@@ -133,3 +133,28 @@ def test_missing_database_url_returns_500(monkeypatch):
     assert "DATABASE_URL" not in response.text
 
     get_engine.cache_clear()
+
+
+def test_dealer_endpoint_returns_111():
+    response = client.get("/dealers/111")
+
+    assert response.status_code == 200
+
+    dealer = response.json()
+
+    assert dealer["dealer_id"] == 111
+    assert dealer["dealer_name"] == "Buffalo Sunset Vertex Automotive"
+    assert dealer["combined_risk"] is True
+
+
+def test_get_unknown_dealer_returns_404():
+    response = client.get("/dealers/999")
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Dealer 999 not found"}
+
+
+def test_get_dealer_with_non_integer_id_returns_422():
+    response = client.get("/dealers/abc")
+
+    assert response.status_code == 422

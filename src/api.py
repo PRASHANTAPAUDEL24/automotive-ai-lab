@@ -6,18 +6,12 @@
 
 from fastapi import FastAPI, HTTPException
 
-from db import InvalidFilterError, get_scorecard
-
+from db import InvalidFilterError, get_dealer, get_scorecard, to_records
 
 app = FastAPI(
     title="Automotive Dealer Analytics API",
     version="0.1.0",
 )
-
-
-def to_records(df):
-    """Convert a DataFrame to JSON-safe records (NaN becomes None)."""
-    return df.astype(object).where(df.notna(), None).to_dict(orient="records")
 
 
 @app.get("/health")
@@ -39,3 +33,16 @@ def dealers(region: str | None = None, risk: str | None = None):
         ) from error
 
     return to_records(scorecard)
+
+
+@app.get("/dealers/{dealer_id}")
+def dealer_by_id(dealer_id: int):
+    dealer = get_dealer(dealer_id)
+
+    if dealer is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Dealer {dealer_id} not found",
+        )
+
+    return dealer

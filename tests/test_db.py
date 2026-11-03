@@ -4,9 +4,10 @@
 # Author: Prashanta Paudel
 # Purpose: Validate dealer scorecard filtering and query safety.
 
+import pandas as pd
 import pytest
 
-from db import InvalidFilterError, get_scorecard
+from db import InvalidFilterError, get_dealer, get_scorecard
 
 
 def test_no_filters_returns_all_dealers():
@@ -103,3 +104,36 @@ def test_or_injection_string_returns_no_rows():
 
     assert len(scorecard) == 0
     assert len(get_scorecard()) == 40
+
+
+def test_get_dealer_111():
+    dealer = get_dealer(111)
+
+    assert dealer is not None
+    assert dealer["dealer_id"] == 111
+    assert dealer["dealer_name"] == "Buffalo Sunset Vertex Automotive"
+    assert dealer["combined_risk"] is True
+
+
+def test_get_unknown_dealer_returns_none():
+    dealer = get_dealer(999)
+
+    assert dealer is None
+
+
+def test_get_dealer_converts_nan_to_none(monkeypatch):
+    fake = pd.DataFrame(
+        {
+            "dealer_id": [111],
+            "aged_pct": [float("nan")],
+        }
+    )
+
+    monkeypatch.setattr(
+        "db.pd.read_sql",
+        lambda *args, **kwargs: fake,
+    )
+
+    dealer = get_dealer(111)
+
+    assert dealer["aged_pct"] is None

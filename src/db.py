@@ -76,3 +76,28 @@ def get_scorecard(region=None, risk=None):
         get_engine(),
         params=params,
     )
+
+
+def to_records(df):
+    """Convert a DataFrame to JSON-safe records (NaN becomes None)."""
+    return df.astype(object).where(df.notna(), None).to_dict(orient="records")
+
+
+def get_dealer(dealer_id: int):
+    """Return one dealer scorecard record, or None if not found."""
+    query = text("""
+        SELECT *
+        FROM dealer_scorecard
+        WHERE dealer_id = :dealer_id
+        """)
+
+    dealer = pd.read_sql(
+        query,
+        get_engine(),
+        params={"dealer_id": dealer_id},
+    )
+
+    if dealer.empty:
+        return None
+
+    return to_records(dealer)[0]
