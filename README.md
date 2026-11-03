@@ -42,6 +42,7 @@ The dataset includes:
 - [x] Day 9: Reusable, parameterized scorecard queries in Python
 - [x] Day 10: FastAPI health and dealer endpoints with safe filtering and automated tests
 - [x] Day 11: Pytest coverage for database queries and FastAPI endpoints
+- [x] Day 12: Single-dealer API endpoint with 404/422 handling and NaN-safe records
 - [ ] Week 3: FastAPI
 - [ ] Week 4: Automotive Dealer Analytics API
 - [ ] Later: LLM APIs, RAG, agents, Docker, Azure
@@ -143,6 +144,7 @@ Interactive documentation is available at http://127.0.0.1:8000/docs.
 |---|---|
 | `GET /health` | Confirms the API is running |
 | `GET /dealers` | Returns the dealer scorecard. Optional filters: `region` (for example `West`) and `risk` (`sales_risk`, `inventory_risk`, `combined_risk` or `early_overstock_watch`) |
+| GET /dealers/{dealer_id} | Returns one dealer scorecard. An unknown dealer id returns HTTP 404. A non-numeric id returns HTTP 422. |
 
 Example:
 
@@ -177,6 +179,7 @@ The current test suite covers:
 - region and risk filtering
 - combined filters
 - API endpoints and response behavior
+- single-dealer lookup by ID
 - client and server error handling
 - injection-safety checks
 - JSON-safe missing-value conversion
