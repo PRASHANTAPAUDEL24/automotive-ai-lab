@@ -1,6 +1,6 @@
 # Automotive AI Lab: Project Progress Summary
 
-**Last updated:** 3 Nov 2026 · **Latest code commit:** `ea7e19d` (Add Dealer response model to API endpoints) · **Tests:** 34 passing
+**Last updated:** 4 Nov 2026 · **Latest code commit:** `ec0f00c` (Add region summary endpoint with tests) · **Tests:** 44 passing
 **Repository:** https://github.com/PRASHANTAPAUDEL24/automotive-ai-lab
 **Author:** Prashanta Paudel
 
@@ -15,18 +15,19 @@ The project builds a data and analytics foundation for AI-powered automotive dea
 - Dealer sales and inventory analytics, implemented twice (pandas and PostgreSQL) and cross-checked against each other.
 - Three reusable PostgreSQL views, ending in a `dealer_scorecard` view with four business-risk flags.
 - A safe, parameterized Python query layer (`src/db.py`).
-- A FastAPI service with three endpoints:
+- A FastAPI service with four endpoints:
 
 | Endpoint | Behaviour |
 |---|---|
 | `GET /health` | Returns `{"status": "ok"}` |
 | `GET /dealers` | Scorecard for all dealers; optional `region` and `risk` filters. Unsupported `risk` returns 400; unknown region returns `[]` |
 | `GET /dealers/{dealer_id}` | One dealer scorecard. Unknown id returns 404; non-integer id returns 422 |
+| `GET /regions/summary` | One row per region: dealer count and counts of sales-risk, inventory-risk, combined-risk and early-overstock-watch dealers |
 
-- A Pydantic `Dealer` response model (17 fields, 5 of them nullable) that validates API output and drives the schema shown in `/docs`.
-- A pytest suite of 34 tests (18 database-layer, 16 API-layer), run without starting a server.
+- Pydantic response models (`Dealer`: 17 fields, 5 nullable; `RegionSummary`: region plus 5 count fields) that validate API output and drive the schemas shown in `/docs`.
+- A pytest suite of 44 tests (25 database-layer, 19 API-layer), run without starting a server.
 
-**Next step:** Week 4, the dealer analytics API (for example, region summary endpoints).
+**Next step:** more dealer analytics endpoints reusing the response-model pattern (for example, a ranked list of at-risk dealers).
 
 **Architecture**
 
@@ -91,6 +92,7 @@ Flags use unrounded values. Rounding is for display only.
 - 8 inventory-risk dealers are not sales-risk, and all 8 are at or above 100% of their September target (range 100.0% to 127.3%).
 - 11 dealers are sales-risk only.
 - Each region has 8 dealers. Region × risk counts (sales / inventory): Northeast 3/2, Southeast 3/1, Midwest 2/2, Southwest 2/2, West 2/2.
+- The one combined-risk dealer is in the Northeast; early-overstock-watch dealers are in the West (2) and the Southeast (1), per `GET /regions/summary`.
 - In this synthetic dataset, dealer size does not appear to explain inventory risk.
 
 ---
@@ -118,6 +120,7 @@ Flags use unrounded values. Rounding is for display only.
 - `requirements.txt` is unpinned. Dependencies are not locked.
 - No CI pipeline yet; tests run locally.
 - `/health` has no response model, so `/docs` shows a generic example for it.
+- The region summary query exists both in `sql/day14_region_summary.sql` and in `src/db.py`; update both if the logic changes.
 - Dev tools (Black, Ruff) are not yet in a separate dev requirements file.
 - Old Day 1-4 scripts have import-order lint warnings (Ruff I001), deliberately left unchanged.
 - All data is synthetic, so findings are illustrative.
@@ -167,11 +170,13 @@ Flags use unrounded values. Rounding is for display only.
 
 **Day 13: Pydantic response model.** Added `src/models.py` with a 17-field `Dealer` model. The five fields the SQL can return as NULL (`target_units`, `achievement_pct`, `avg_days_available`, `aged_pct`, `months_of_supply`) are typed `| None` with descriptions. Applied it with `response_model` to both endpoints. Added tests for the exact field set, null acceptance and invalid data returning HTTP 500 (suite 31 to 34). Pushed as `ea7e19d` (code and tests) and `37f4b71` (README).
 
+**Day 14: Region summary endpoint.** Added `sql/day14_region_summary.sql` and `get_region_summary()` in `db.py` (one row per region, `COUNT(*) FILTER` per risk flag), a six-field `RegionSummary` model, and `GET /regions/summary`. Tests check every region's counts against independently derived values, the network totals (40 / 12 / 9 / 1 / 3), the field set and the alphabetical order (suite 34 to 44). Pushed as `e7eddf7` (SQL) and `ec0f00c` (code and tests).
+
 ---
 
 ## 9. Roadmap
 
-**Next:** Week 4, the dealer analytics API (for example, region summary endpoints), reusing the `Dealer` response-model pattern.
+**Next:** more dealer analytics endpoints, reusing the response-model pattern (for example, a ranked list of at-risk dealers).
 
 **Then:**
 
