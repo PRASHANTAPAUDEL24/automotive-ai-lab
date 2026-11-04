@@ -44,6 +44,7 @@ The dataset includes:
 - [x] Day 11: Pytest coverage for database queries and FastAPI endpoints
 - [x] Day 12: Single-dealer API endpoint with 404/422 handling and NaN-safe records
 - [x] Day 13: Pydantic `Dealer` response model with nullable-field handling, response validation, and OpenAPI documentation
+- [x] Day 14: Region summary endpoint (`GET /regions/summary`) with SQL, database function, response model, and tests
 - [ ] Week 3: FastAPI
 - [ ] Week 4: Automotive Dealer Analytics API
 - [ ] Later: LLM APIs, RAG, agents, Docker, Azure
@@ -146,6 +147,7 @@ Interactive documentation is available at http://127.0.0.1:8000/docs.
 | `GET /health` | Confirms the API is running |
 | `GET /dealers` | Returns the dealer scorecard. Optional filters: `region` (for example `West`) and `risk` (`sales_risk`, `inventory_risk`, `combined_risk` or `early_overstock_watch`) |
 | `GET /dealers/{dealer_id}` | Returns one dealer scorecard. An unknown dealer id returns HTTP 404. A non-numeric id returns HTTP 422. |
+| `GET /regions/summary` | Returns one row per region, ordered by region: dealer count and the number of sales-risk, inventory-risk, combined-risk and early-overstock-watch dealers |
 
 Example:
 
@@ -168,6 +170,8 @@ An unsupported `risk` value returns HTTP 400. An unknown `region` returns an emp
 | `months_of_supply` | The dealer has stock but no sales that month |
 
 If the data layer ever returns a value that does not match the model, the API returns HTTP 500 instead of sending malformed data. The schema is shown in the interactive docs at `/docs`.
+
+`GET /regions/summary` returns `RegionSummary` records. All six fields are required and non-nullable. For example, the Northeast row has 8 dealers, 3 sales-risk, 2 inventory-risk, 1 combined-risk and 0 early-overstock-watch dealers.
 
 ## Testing
 
@@ -201,6 +205,7 @@ The current test suite covers:
 - exact response field set for a dealer record
 - null values accepted for the five nullable fields
 - invalid data from the data layer returns HTTP 500
+- region summary counts for every region, plus network totals
 
 ## Definitions
 
