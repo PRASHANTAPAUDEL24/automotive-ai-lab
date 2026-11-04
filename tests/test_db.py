@@ -7,7 +7,7 @@
 import pandas as pd
 import pytest
 
-from db import InvalidFilterError, get_dealer, get_scorecard
+from db import InvalidFilterError, get_dealer, get_region_summary, get_scorecard
 
 
 def test_no_filters_returns_all_dealers():
@@ -137,3 +137,54 @@ def test_get_dealer_converts_nan_to_none(monkeypatch):
     dealer = get_dealer(111)
 
     assert dealer["aged_pct"] is None
+
+
+def test_region_summary_returns_five_regions():
+    summary = get_region_summary()
+
+    assert len(summary) == 5
+    assert list(summary["region"]) == [
+        "Midwest",
+        "Northeast",
+        "Southeast",
+        "Southwest",
+        "West",
+    ]
+
+
+@pytest.mark.parametrize(
+    "region, dealers, sales, inventory, combined, early_watch",
+    [
+        ("Midwest", 8, 2, 2, 0, 0),
+        ("Northeast", 8, 3, 2, 1, 0),
+        ("Southeast", 8, 3, 1, 0, 1),
+        ("Southwest", 8, 2, 2, 0, 0),
+        ("West", 8, 2, 2, 0, 2),
+    ],
+)
+def test_region_summary_values(
+    region,
+    dealers,
+    sales,
+    inventory,
+    combined,
+    early_watch,
+):
+    summary = get_region_summary()
+    row = summary.loc[summary["region"] == region].iloc[0]
+
+    assert row["dealers"] == dealers
+    assert row["sales_risk_dealers"] == sales
+    assert row["inventory_risk_dealers"] == inventory
+    assert row["combined_risk_dealers"] == combined
+    assert row["early_overstock_watch_dealers"] == early_watch
+
+
+def test_region_summary_network_totals():
+    summary = get_region_summary()
+
+    assert summary["dealers"].sum() == 40
+    assert summary["sales_risk_dealers"].sum() == 12
+    assert summary["inventory_risk_dealers"].sum() == 9
+    assert summary["combined_risk_dealers"].sum() == 1
+    assert summary["early_overstock_watch_dealers"].sum() == 3

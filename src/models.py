@@ -2,7 +2,7 @@
 # Day 13: Pydantic response models
 # Created on: 2026-11-03
 # Author: Prashanta Paudel
-# Purpose: Define validated API response schemas for dealer data.
+# Purpose: Define validated API response schemas for dealer and regional analytics.
 
 from pydantic import BaseModel, Field
 
@@ -44,3 +44,22 @@ class Dealer(BaseModel):
     sales_risk: bool
     combined_risk: bool
     early_overstock_watch: bool
+
+
+class RegionSummary(BaseModel):
+    """Risk summary for one dealer region."""
+
+    region: str = Field(description="Dealer region.")
+    dealers: int = Field(description="Number of dealers in the region.")
+    sales_risk_dealers: int = Field(
+        description="Dealers with September achievement below 80%."
+    )
+    inventory_risk_dealers: int = Field(
+        description="Dealers meeting the inventory-risk rule."
+    )
+    combined_risk_dealers: int = Field(
+        description="Dealers with both sales risk and inventory risk."
+    )
+    early_overstock_watch_dealers: int = Field(
+        description="Dealers on the early-overstock watch list."
+    )

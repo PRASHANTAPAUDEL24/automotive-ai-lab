@@ -259,3 +259,39 @@ def test_dealer_with_null_fields_returns_200(monkeypatch):
     assert data["avg_days_available"] is None
     assert data["aged_pct"] is None
     assert data["months_of_supply"] is None
+
+
+def test_region_summary_endpoint_returns_five_regions():
+    response = client.get("/regions/summary")
+
+    assert response.status_code == 200
+    assert len(response.json()) == 5
+
+
+def test_region_summary_endpoint_west_values():
+    response = client.get("/regions/summary")
+
+    assert response.status_code == 200
+
+    west = next(region for region in response.json() if region["region"] == "West")
+
+    assert west["dealers"] == 8
+    assert west["sales_risk_dealers"] == 2
+    assert west["inventory_risk_dealers"] == 2
+    assert west["combined_risk_dealers"] == 0
+    assert west["early_overstock_watch_dealers"] == 2
+
+
+def test_region_summary_response_has_expected_fields():
+    response = client.get("/regions/summary")
+
+    assert response.status_code == 200
+
+    assert set(response.json()[0].keys()) == {
+        "region",
+        "dealers",
+        "sales_risk_dealers",
+        "inventory_risk_dealers",
+        "combined_risk_dealers",
+        "early_overstock_watch_dealers",
+    }

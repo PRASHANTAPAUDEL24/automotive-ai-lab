@@ -101,3 +101,26 @@ def get_dealer(dealer_id: int):
         return None
 
     return to_records(dealer)[0]
+
+
+def get_region_summary():
+    """Return one scorecard summary row per region."""
+    query = text("""
+        SELECT
+            region,
+            COUNT(*) AS dealers,
+            COUNT(*) FILTER (WHERE sales_risk) AS sales_risk_dealers,
+            COUNT(*) FILTER (WHERE inventory_risk) AS inventory_risk_dealers,
+            COUNT(*) FILTER (WHERE combined_risk) AS combined_risk_dealers,
+            COUNT(*) FILTER (
+                WHERE early_overstock_watch
+            ) AS early_overstock_watch_dealers
+        FROM dealer_scorecard
+        GROUP BY region
+        ORDER BY region
+        """)
+
+    return pd.read_sql(
+        query,
+        get_engine(),
+    )
