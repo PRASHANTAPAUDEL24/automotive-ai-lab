@@ -158,3 +158,104 @@ def test_get_dealer_with_non_integer_id_returns_422():
     response = client.get("/dealers/abc")
 
     assert response.status_code == 422
+
+
+def test_dealer_response_has_expected_fields():
+    response = client.get("/dealers/111")
+
+    assert response.status_code == 200
+
+    assert set(response.json().keys()) == {
+        "dealer_id",
+        "dealer_name",
+        "region",
+        "size_class",
+        "units_sold",
+        "target_units",
+        "achievement_pct",
+        "available_units",
+        "aged_units",
+        "avg_days_available",
+        "aged_pct",
+        "months_of_supply",
+        "high_supply",
+        "inventory_risk",
+        "sales_risk",
+        "combined_risk",
+        "early_overstock_watch",
+    }
+
+
+def test_invalid_dealer_response_returns_500(monkeypatch):
+    bad_dealer = {
+        "dealer_id": "not-a-number",
+        "dealer_name": "Buffalo Sunset Vertex Automotive",
+        "region": "Northeast",
+        "size_class": "Medium",
+        "units_sold": 10,
+        "target_units": 20,
+        "achievement_pct": 50.0,
+        "available_units": 25,
+        "aged_units": 5,
+        "avg_days_available": 40.0,
+        "aged_pct": 20.0,
+        "months_of_supply": 2.5,
+        "high_supply": False,
+        "inventory_risk": False,
+        "sales_risk": True,
+        "combined_risk": False,
+        "early_overstock_watch": False,
+    }
+
+    monkeypatch.setattr(
+        "api.get_dealer",
+        lambda dealer_id: bad_dealer,
+    )
+
+    test_client = TestClient(
+        app,
+        raise_server_exceptions=False,
+    )
+
+    response = test_client.get("/dealers/111")
+
+    assert response.status_code == 500
+
+
+def test_dealer_with_null_fields_returns_200(monkeypatch):
+    dealer_with_nulls = {
+        "dealer_id": 111,
+        "dealer_name": "Buffalo Sunset Vertex Automotive",
+        "region": "Northeast",
+        "size_class": "Medium",
+        "units_sold": 0,
+        "target_units": None,
+        "achievement_pct": None,
+        "available_units": 0,
+        "aged_units": 0,
+        "avg_days_available": None,
+        "aged_pct": None,
+        "months_of_supply": None,
+        "high_supply": False,
+        "inventory_risk": False,
+        "sales_risk": False,
+        "combined_risk": False,
+        "early_overstock_watch": False,
+    }
+
+    monkeypatch.setattr(
+        "api.get_dealer",
+        lambda dealer_id: dealer_with_nulls,
+    )
+
+    response = client.get("/dealers/111")
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["target_units"] is None
+    assert data["achievement_pct"] is None
+    assert data["avg_days_available"] is None
+    assert data["aged_pct"] is None
+    assert data["months_of_supply"] is None

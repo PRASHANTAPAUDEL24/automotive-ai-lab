@@ -7,6 +7,7 @@
 from fastapi import FastAPI, HTTPException
 
 from db import InvalidFilterError, get_dealer, get_scorecard, to_records
+from models import Dealer
 
 app = FastAPI(
     title="Automotive Dealer Analytics API",
@@ -19,7 +20,7 @@ def health():
     return {"status": "ok"}
 
 
-@app.get("/dealers")
+@app.get("/dealers", response_model=list[Dealer])
 def dealers(region: str | None = None, risk: str | None = None):
     try:
         scorecard = get_scorecard(
@@ -35,7 +36,7 @@ def dealers(region: str | None = None, risk: str | None = None):
     return to_records(scorecard)
 
 
-@app.get("/dealers/{dealer_id}")
+@app.get("/dealers/{dealer_id}", response_model=Dealer)
 def dealer_by_id(dealer_id: int):
     dealer = get_dealer(dealer_id)
 
