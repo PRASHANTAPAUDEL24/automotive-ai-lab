@@ -43,6 +43,7 @@ The dataset includes:
 - [x] Day 10: FastAPI health and dealer endpoints with safe filtering and automated tests
 - [x] Day 11: Pytest coverage for database queries and FastAPI endpoints
 - [x] Day 12: Single-dealer API endpoint with 404/422 handling and NaN-safe records
+- [x] Day 13: Pydantic `Dealer` response model with nullable-field handling, response validation, and OpenAPI documentation
 - [ ] Week 3: FastAPI
 - [ ] Week 4: Automotive Dealer Analytics API
 - [ ] Later: LLM APIs, RAG, agents, Docker, Azure
@@ -51,7 +52,7 @@ The dataset includes:
 
 - `scripts/generate_dealer_data.py` generates the synthetic dataset
 - `data/` contains generated CSV files and the dealer scorecard output
-- `src/` contains the analysis scripts, reusable database module (`db.py`), and FastAPI app (`api.py`)
+- `src/` contains the analysis scripts, reusable database module (`db.py`), Pydantic response models (`models.py`), and FastAPI app (`api.py`)
 - `sql/` contains the PostgreSQL schema, loader, views, and SQL analysis queries
 - `tests/` contains pytest coverage for the database/query layer and FastAPI endpoints
 - `pytest.ini` configures pytest discovery and adds `src/` to the Python import path
@@ -144,7 +145,7 @@ Interactive documentation is available at http://127.0.0.1:8000/docs.
 |---|---|
 | `GET /health` | Confirms the API is running |
 | `GET /dealers` | Returns the dealer scorecard. Optional filters: `region` (for example `West`) and `risk` (`sales_risk`, `inventory_risk`, `combined_risk` or `early_overstock_watch`) |
-| GET /dealers/{dealer_id} | Returns one dealer scorecard. An unknown dealer id returns HTTP 404. A non-numeric id returns HTTP 422. |
+| `GET /dealers/{dealer_id}` | Returns one dealer scorecard. An unknown dealer id returns HTTP 404. A non-numeric id returns HTTP 422. |
 
 Example:
 
@@ -153,6 +154,20 @@ curl "http://127.0.0.1:8000/dealers?region=West&risk=early_overstock_watch"
 ```
 
 An unsupported `risk` value returns HTTP 400. An unknown `region` returns an empty list.
+
+### Response model
+
+`GET /dealers` and `GET /dealers/{dealer_id}` return records validated by the `Dealer` model in `src/models.py`. All 17 fields are always present. Five can be `null`:
+
+| Field | Null when |
+|---|---|
+| `target_units` | The dealer has no target row for the month |
+| `achievement_pct` | The target is missing or zero |
+| `avg_days_available` | The dealer has no available units |
+| `aged_pct` | The dealer has no available units |
+| `months_of_supply` | The dealer has stock but no sales that month |
+
+If the data layer ever returns a value that does not match the model, the API returns HTTP 500 instead of sending malformed data. The schema is shown in the interactive docs at `/docs`.
 
 ## Testing
 
@@ -183,6 +198,9 @@ The current test suite covers:
 - client and server error handling
 - injection-safety checks
 - JSON-safe missing-value conversion
+- exact response field set for a dealer record
+- null values accepted for the five nullable fields
+- invalid data from the data layer returns HTTP 500
 
 ## Definitions
 
