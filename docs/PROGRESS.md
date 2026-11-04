@@ -1,6 +1,6 @@
 # Automotive AI Lab: Project Progress Summary
 
-**Last updated:** 3 Nov 2026 · **Latest code commit:** `d0b7ef6` (Remove stray shell command from requirements.txt) · **Tests:** 31 passing
+**Last updated:** 3 Nov 2026 · **Latest code commit:** `ea7e19d` (Add Dealer response model to API endpoints) · **Tests:** 34 passing
 **Repository:** https://github.com/PRASHANTAPAUDEL24/automotive-ai-lab
 **Author:** Prashanta Paudel
 
@@ -23,9 +23,10 @@ The project builds a data and analytics foundation for AI-powered automotive dea
 | `GET /dealers` | Scorecard for all dealers; optional `region` and `risk` filters. Unsupported `risk` returns 400; unknown region returns `[]` |
 | `GET /dealers/{dealer_id}` | One dealer scorecard. Unknown id returns 404; non-integer id returns 422 |
 
-- A pytest suite of 31 tests (18 database-layer, 13 API-layer), run without starting a server.
+- A Pydantic `Dealer` response model (17 fields, 5 of them nullable) that validates API output and drives the schema shown in `/docs`.
+- A pytest suite of 34 tests (18 database-layer, 16 API-layer), run without starting a server.
 
-**Next step:** Day 13, Pydantic response models so `/docs` shows typed schemas for every dealer record.
+**Next step:** Week 4, the dealer analytics API (for example, region summary endpoints).
 
 **Architecture**
 
@@ -102,6 +103,7 @@ Flags use unrounded values. Rounding is for display only.
 - SQL-injection tests, both destructive (`DROP TABLE`) and harmless (`' OR '1'='1`).
 - Explicit client-versus-server error handling: bad input gives 400/404/422; a server misconfiguration gives 500 without leaking `DATABASE_URL`.
 - One shared, NaN-safe `to_records` function so JSON output never contains NaN.
+- A typed response model that validates API output; nullable fields are explicit and documented in `/docs`.
 - Pandas-versus-SQL cross-validation, kept as automated tests.
 - Test-first workflow (red, then green) for new behaviour.
 - Deterministic query ordering.
@@ -115,6 +117,7 @@ Flags use unrounded values. Rounding is for display only.
 - All views are fixed to month `2026-09`. Month-parameterized views are planned.
 - `requirements.txt` is unpinned. Dependencies are not locked.
 - No CI pipeline yet; tests run locally.
+- `/health` has no response model, so `/docs` shows a generic example for it.
 - Dev tools (Black, Ruff) are not yet in a separate dev requirements file.
 - Old Day 1-4 scripts have import-order lint warnings (Ruff I001), deliberately left unchanged.
 - All data is synthetic, so findings are illustrative.
@@ -126,6 +129,7 @@ Flags use unrounded values. Rounding is for display only.
 
 - **Duplicate test names silently shadow each other.** Two functions named `test_get_dealer_111` meant the HTTP test never ran. Linters such as Ruff (F811) catch this.
 - **Test-first caught a real bug.** `get_dealer` bypassed the NaN conversion; the failing test (`assert nan is None`) exposed it before any client could see it.
+- **A response model must match the SQL's NULL behaviour.** The first draft typed every field as non-null and passed on today's data. A test with real nulls failed with five validation errors until the five nullable fields were typed `| None`.
 - **A green subset is not a green suite.** After a refactor, three tests passed while nine failed on a missing import. Run the whole suite before every commit.
 - **`git diff --check` ignores untracked files.** Stage first, then run `git diff --cached --check`.
 - **Formatters touch more than you expect.** `black src tests` reformatted seven old scripts; they were reverted so the Day 12 commit stayed focused.
@@ -161,15 +165,17 @@ Flags use unrounded values. Rounding is for display only.
 
 **Day 12: Single-dealer endpoint.** Added `GET /dealers/{dealer_id}` (200 / 404 / 422) with `get_dealer` in `db.py`. Moved `to_records` into `db.py` as the shared NaN-safe conversion. Suite grew from 25 to 31 tests. Pushed as `64d3f7b` (code and tests) and `c6577f1` (README). Follow-up fix `d0b7ef6` removed a stray shell command from `requirements.txt`.
 
+**Day 13: Pydantic response model.** Added `src/models.py` with a 17-field `Dealer` model. The five fields the SQL can return as NULL (`target_units`, `achievement_pct`, `avg_days_available`, `aged_pct`, `months_of_supply`) are typed `| None` with descriptions. Applied it with `response_model` to both endpoints. Added tests for the exact field set, null acceptance and invalid data returning HTTP 500 (suite 31 to 34). Pushed as `ea7e19d` (code and tests) and `37f4b71` (README).
+
 ---
 
 ## 9. Roadmap
 
-**Next (Day 13):** Pydantic response models (`Dealer`, `list[Dealer]`), with nullable fields typed explicitly so `/docs` shows the real structure and the API validates its own output.
+**Next:** Week 4, the dealer analytics API (for example, region summary endpoints), reusing the `Dealer` response-model pattern.
 
 **Then:**
 
-- Richer FastAPI endpoints and a dealer analytics API
+- Richer FastAPI endpoints
 - Month-parameterized views
 - Additional sales and inventory queries, with more automated API tests
 - Dev requirements, pinned dependencies and CI
