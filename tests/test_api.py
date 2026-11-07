@@ -295,3 +295,80 @@ def test_region_summary_response_has_expected_fields():
         "combined_risk_dealers",
         "early_overstock_watch_dealers",
     }
+
+
+def test_at_risk_endpoint_returns_twenty_dealers():
+    response = client.get("/dealers/at-risk")
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert len(data) == 20
+    assert data[0]["dealer_id"] == 111
+    assert data[0]["rank"] == 1
+    assert data[0]["risk_tier"] == 1
+    assert [dealer["rank"] for dealer in data] == list(range(1, 21))
+
+
+def test_at_risk_endpoint_limit_five():
+    response = client.get(
+        "/dealers/at-risk",
+        params={"limit": 5},
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert len(data) == 5
+    assert [dealer["rank"] for dealer in data] == [1, 2, 3, 4, 5]
+
+
+def test_at_risk_endpoint_rejects_zero_limit():
+    response = client.get(
+        "/dealers/at-risk",
+        params={"limit": 0},
+    )
+
+    assert response.status_code == 422
+
+
+def test_at_risk_endpoint_rejects_non_integer_limit():
+    response = client.get(
+        "/dealers/at-risk",
+        params={"limit": "Not a number"},
+    )
+
+    assert response.status_code == 422
+
+
+def test_at_risk_response_has_expected_fields():
+    response = client.get(
+        "/dealers/at-risk",
+        params={"limit": 1},
+    )
+
+    assert response.status_code == 200
+
+    assert set(response.json()[0].keys()) == {
+        "dealer_id",
+        "dealer_name",
+        "region",
+        "size_class",
+        "units_sold",
+        "target_units",
+        "achievement_pct",
+        "available_units",
+        "aged_units",
+        "avg_days_available",
+        "aged_pct",
+        "months_of_supply",
+        "high_supply",
+        "inventory_risk",
+        "sales_risk",
+        "combined_risk",
+        "early_overstock_watch",
+        "rank",
+        "risk_tier",
+    }

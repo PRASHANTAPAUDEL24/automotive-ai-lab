@@ -63,3 +63,17 @@ class RegionSummary(BaseModel):
     early_overstock_watch_dealers: int = Field(
         description="Dealers on the early-overstock watch list."
     )
+
+
+class RankedDealer(Dealer):
+    """Dealer ranked by management urgency."""
+
+    rank: int = Field(description="Global urgency rank; 1 is the most urgent dealer.")
+    risk_tier: int = Field(
+        description=(
+            "Risk tier: 1 = combined risk, "
+            "2 = early overstock watch, "
+            "3 = sales risk only, "
+            "4 = inventory risk only."
+        )
+    )

@@ -4,10 +4,18 @@
 # Author: Prashanta Paudel
 # Purpose: Validate dealer scorecard filtering and query safety.
 
+import itertools
+
 import pandas as pd
 import pytest
 
-from db import InvalidFilterError, get_dealer, get_region_summary, get_scorecard
+from db import (
+    InvalidFilterError,
+    get_at_risk_dealers,
+    get_dealer,
+    get_region_summary,
+    get_scorecard,
+)
 
 
 def test_no_filters_returns_all_dealers():
@@ -188,3 +196,81 @@ def test_region_summary_network_totals():
     assert summary["inventory_risk_dealers"].sum() == 9
     assert summary["combined_risk_dealers"].sum() == 1
     assert summary["early_overstock_watch_dealers"].sum() == 3
+
+
+def test_at_risk_dealers_returns_twenty_rows():
+    dealers = get_at_risk_dealers()
+
+    assert len(dealers) == 20
+
+
+def test_at_risk_dealer_tier_counts():
+    dealers = get_at_risk_dealers()
+
+    counts = dealers["risk_tier"].value_counts().to_dict()
+
+    assert counts == {
+        1: 1,
+        2: 3,
+        3: 8,
+        4: 8,
+    }
+
+
+def test_at_risk_dealer_ranks_are_continuous():
+    dealers = get_at_risk_dealers()
+
+    assert list(dealers["rank"]) == list(range(1, 21))
+
+
+def test_at_risk_dealer_tiers_never_decrease():
+    dealers = get_at_risk_dealers()
+
+    tiers = list(dealers["risk_tier"])
+
+    assert tiers == sorted(tiers)
+
+
+def test_at_risk_dealer_limit_five_keeps_global_ranks():
+    dealers = get_at_risk_dealers(limit=5)
+
+    assert len(dealers) == 5
+    assert list(dealers["rank"]) == [1, 2, 3, 4, 5]
+
+
+def test_at_risk_dealers_follow_within_tier_order():
+    dealers = get_at_risk_dealers()
+    rows = dealers.to_dict(orient="records")
+
+    for previous, current in itertools.pairwise(rows):
+        if previous["risk_tier"] != current["risk_tier"]:
+            continue
+
+        previous_supply = previous["months_of_supply"]
+        current_supply = current["months_of_supply"]
+
+        if previous_supply == current_supply:
+            assert previous["dealer_id"] < current["dealer_id"]
+        else:
+            assert previous_supply > current_supply
+
+
+def test_at_risk_dealer_ranking_anchors():
+    dealers = get_at_risk_dealers()
+
+    assert dealers.iloc[0]["dealer_id"] == 111
+    assert list(dealers.iloc[1:4]["dealer_id"]) == [102, 105, 130]
+    assert dealers.iloc[-1]["dealer_id"] == 125
+
+    dealer_ids = list(dealers["dealer_id"])
+    assert dealer_ids.index(101) < dealer_ids.index(137)
+
+
+def test_at_risk_dealer_limit_matches_full_result_head():
+    full = get_at_risk_dealers()
+    limited = get_at_risk_dealers(limit=5)
+
+    pd.testing.assert_frame_equal(
+        limited.reset_index(drop=True),
+        full.head(5).reset_index(drop=True),
+    )

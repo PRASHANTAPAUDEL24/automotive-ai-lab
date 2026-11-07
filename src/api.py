@@ -4,16 +4,17 @@
 # Author: Prashanta Paudel
 # Purpose: Expose dealer scorecard data through HTTP endpoints.
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 
 from db import (
     InvalidFilterError,
+    get_at_risk_dealers,
     get_dealer,
     get_region_summary,
     get_scorecard,
     to_records,
 )
-from models import Dealer, RegionSummary
+from models import Dealer, RankedDealer, RegionSummary
 
 app = FastAPI(
     title="Automotive Dealer Analytics API",
@@ -40,6 +41,14 @@ def dealers(region: str | None = None, risk: str | None = None):
         ) from error
 
     return to_records(scorecard)
+
+
+@app.get("/dealers/at-risk", response_model=list[RankedDealer])
+def at_risk_dealers(
+    limit: int | None = Query(default=None, ge=1),
+):
+    dealers = get_at_risk_dealers(limit=limit)
+    return to_records(dealers)
 
 
 @app.get("/dealers/{dealer_id}", response_model=Dealer)
