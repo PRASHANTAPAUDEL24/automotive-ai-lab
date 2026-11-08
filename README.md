@@ -45,6 +45,7 @@ The dataset includes:
 - [x] Day 12: Single-dealer API endpoint with 404/422 handling and NaN-safe records
 - [x] Day 13: Pydantic `Dealer` response model with nullable-field handling, response validation, and OpenAPI documentation
 - [x] Day 14: Region summary endpoint (`GET /regions/summary`) with SQL, database function, response model, and tests
+- [x] Day 15: Ranked at-risk dealers endpoint (`GET /dealers/at-risk`) with SQL ranking, `RankedDealer` response model, optional `limit`, and tests
 - [ ] Week 3: FastAPI
 - [ ] Week 4: Automotive Dealer Analytics API
 - [ ] Later: LLM APIs, RAG, agents, Docker, Azure
@@ -148,6 +149,7 @@ Interactive documentation is available at http://127.0.0.1:8000/docs.
 | `GET /dealers` | Returns the dealer scorecard. Optional filters: `region` (for example `West`) and `risk` (`sales_risk`, `inventory_risk`, `combined_risk` or `early_overstock_watch`) |
 | `GET /dealers/{dealer_id}` | Returns one dealer scorecard. An unknown dealer id returns HTTP 404. A non-numeric id returns HTTP 422. |
 | `GET /regions/summary` | Returns one row per region, ordered by region: dealer count and the number of sales-risk, inventory-risk, combined-risk and early-overstock-watch dealers |
+| `GET /dealers/at-risk` | Returns the 20 sales-risk or inventory-risk dealers, ranked from most to least urgent. Optional `limit` (minimum 1) keeps the global ranks; `limit=0` or a non-integer returns 422 |
 
 Example:
 
@@ -172,6 +174,8 @@ An unsupported `risk` value returns HTTP 400. An unknown `region` returns an emp
 If the data layer ever returns a value that does not match the model, the API returns HTTP 500 instead of sending malformed data. The schema is shown in the interactive docs at `/docs`.
 
 `GET /regions/summary` returns `RegionSummary` records. All six fields are required and non-nullable. For example, the Northeast row has 8 dealers, 3 sales-risk, 2 inventory-risk, 1 combined-risk and 0 early-overstock-watch dealers.
+
+`GET /dealers/at-risk` returns `RankedDealer` records: every `Dealer` field plus `rank` (1 is the most urgent dealer) and `risk_tier` (1 = combined risk, 2 = early overstock watch, 3 = sales risk only, 4 = inventory risk only). Dealers are ordered by risk tier, then months of supply (highest first, NULL first), then dealer ID as the tie-breaker. The optional `limit` applies after ranking, so `limit=5` returns ranks 1 to 5.
 
 ## Testing
 
@@ -206,6 +210,7 @@ The current test suite covers:
 - null values accepted for the five nullable fields
 - invalid data from the data layer returns HTTP 500
 - region summary counts for every region, plus network totals
+- ranked at-risk list: tier counts, continuous ranks, within-tier ordering, anchor positions and `limit` handling
 
 ## Definitions
 
@@ -217,6 +222,9 @@ The current test suite covers:
 - **Inventory risk:** more than 4 months of supply and more than 30% aged inventory
 - **Combined risk:** both sales risk and inventory risk
 - **Early overstock watch:** sales risk and more than 4 months of supply, but not yet inventory risk
+- **At-risk dealer:** a dealer with sales risk or inventory risk (20 of 40 in this dataset)
+- **Risk tier:** the urgency group used to rank at-risk dealers: 1 = combined risk, 2 = early overstock watch, 3 = sales risk only, 4 = inventory risk only
+- **Rank:** position in the at-risk list, ordered by risk tier, then months of supply (highest first, `NULL` first), then dealer ID; 1 is the most urgent dealer
 
 ## Key Findings
 
@@ -229,6 +237,7 @@ For September 2026 synthetic data:
 - 8 inventory-risk dealers are not sales-risk; in this dataset, all 8 are at or above 100% of their September target.
 - Inventory-risk dealers are 5 Medium, 2 Large, and 2 Small, compared with a network mix of 20 Medium, 10 Large, and 10 Small.
 - Dealer size does not appear to explain inventory risk in this dataset.
+- The ranked at-risk list has 20 dealers: 1 in tier 1 (Buffalo Sunset), 3 in tier 2 (Orlando, San Diego, and Seattle), 8 in tier 3, and 8 in tier 4.
 
 ## Validation
 
@@ -240,6 +249,7 @@ The PostgreSQL scorecard was cross-checked against the Day 4 pandas scorecard. A
 - Months of supply currently uses September sales only.
 - The 80%, 90-day, 4-month, and 30% thresholds are business-rule assumptions and should be validated and tuned with stakeholders in a real deployment.
 - PostgreSQL views are currently fixed to September 2026; future API work will need month-parameterized logic.
+- The at-risk ranking order (risk tier, then months of supply) is a prioritization heuristic, not a validated predictive metric. Within the sales-risk-only tier, months of supply is a weak signal because all of those dealers are under 3.2 months.
 
 ## Planned Projects
 
