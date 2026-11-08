@@ -46,6 +46,7 @@ The dataset includes:
 - [x] Day 13: Pydantic `Dealer` response model with nullable-field handling, response validation, and OpenAPI documentation
 - [x] Day 14: Region summary endpoint (`GET /regions/summary`) with SQL, database function, response model, and tests
 - [x] Day 15: Ranked at-risk dealers endpoint (`GET /dealers/at-risk`) with SQL ranking, `RankedDealer` response model, optional `limit`, and tests
+- [x] Day 16: Pinned dependencies, separate dev requirements, and a clean-clone install test
 - [ ] Week 3: FastAPI
 - [ ] Week 4: Automotive Dealer Analytics API
 - [ ] Later: LLM APIs, RAG, agents, Docker, Azure
@@ -58,16 +59,21 @@ The dataset includes:
 - `sql/` contains the PostgreSQL schema, loader, views, and SQL analysis queries
 - `tests/` contains pytest coverage for the database/query layer and FastAPI endpoints
 - `pytest.ini` configures pytest discovery and adds `src/` to the Python import path
+- `requirements.txt` pins the runtime dependencies; `requirements-dev.txt` adds the test and lint tools
 
 ## How to Run
 
-Create and activate a virtual environment, then install dependencies:
+This project was developed and tested with Python 3.12.7. Create and activate a virtual environment, then install the development dependencies:
 
 ```bash
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+python -m pip install -r requirements-dev.txt
 ```
+
+`requirements.txt` contains pinned runtime dependencies. `requirements-dev.txt` includes the runtime file and adds pytest, httpx2, Black, and Ruff for testing and development. To run only the analyses and the API, install `requirements.txt` instead.
+
+If another Python environment (for example Conda) is also active, run tools through `python -m` (for example `python -m pytest`) so the virtual environment's copy is used.
 
 Generate the synthetic dataset:
 
