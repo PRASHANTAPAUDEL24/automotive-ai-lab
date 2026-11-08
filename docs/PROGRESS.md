@@ -1,6 +1,6 @@
 # Automotive AI Lab: Project Progress Summary
 
-**Last updated:** 4 Nov 2026 · **Latest code commit:** `ec0f00c` (Add region summary endpoint with tests) · **Tests:** 44 passing
+**Last updated:** 7 Nov 2026 · **Latest code commit:** `0488e1e` (Add ranked at-risk dealers endpoint with tests) · **Tests:** 57 passing
 **Repository:** https://github.com/PRASHANTAPAUDEL24/automotive-ai-lab
 **Author:** Prashanta Paudel
 
@@ -15,7 +15,7 @@ The project builds a data and analytics foundation for AI-powered automotive dea
 - Dealer sales and inventory analytics, implemented twice (pandas and PostgreSQL) and cross-checked against each other.
 - Three reusable PostgreSQL views, ending in a `dealer_scorecard` view with four business-risk flags.
 - A safe, parameterized Python query layer (`src/db.py`).
-- A FastAPI service with four endpoints:
+- A FastAPI service with five endpoints:
 
 | Endpoint | Behaviour |
 |---|---|
@@ -23,11 +23,12 @@ The project builds a data and analytics foundation for AI-powered automotive dea
 | `GET /dealers` | Scorecard for all dealers; optional `region` and `risk` filters. Unsupported `risk` returns 400; unknown region returns `[]` |
 | `GET /dealers/{dealer_id}` | One dealer scorecard. Unknown id returns 404; non-integer id returns 422 |
 | `GET /regions/summary` | One row per region: dealer count and counts of sales-risk, inventory-risk, combined-risk and early-overstock-watch dealers |
+| `GET /dealers/at-risk` | The 20 sales-risk or inventory-risk dealers, ranked (1 = most urgent). Optional `limit` (minimum 1) keeps the global ranks; 0 or a non-integer returns 422 |
 
-- Pydantic response models (`Dealer`: 17 fields, 5 nullable; `RegionSummary`: region plus 5 count fields) that validate API output and drive the schemas shown in `/docs`.
-- A pytest suite of 44 tests (25 database-layer, 19 API-layer), run without starting a server.
+- Pydantic response models (`Dealer`: 17 fields, 5 nullable; `RegionSummary`: region plus 5 count fields; `RankedDealer`: `Dealer` plus `rank` and `risk_tier`) that validate API output and drive the schemas shown in `/docs`.
+- A pytest suite of 57 tests (33 database-layer, 24 API-layer), run without starting a server.
 
-**Next step:** more dealer analytics endpoints reusing the response-model pattern (for example, a ranked list of at-risk dealers).
+**Next step:** housekeeping and hardening: a dev requirements file and pinned dependencies, then month-parameterized views.
 
 **Architecture**
 
@@ -78,6 +79,8 @@ uvicorn api:app --app-dir src --reload
 | `inventory_risk` | High supply AND more than 30% aged inventory |
 | `combined_risk` | `sales_risk` AND `inventory_risk` |
 | `early_overstock_watch` | `sales_risk` AND high supply AND NOT `inventory_risk` |
+| Risk tier | 1 = `combined_risk`, 2 = `early_overstock_watch`, 3 = `sales_risk` only, 4 = `inventory_risk` only |
+| Rank | Position in the at-risk list: by risk tier, then months of supply (highest first, NULL first), then `dealer_id` |
 
 Flags use unrounded values. Rounding is for display only.
 
@@ -93,6 +96,7 @@ Flags use unrounded values. Rounding is for display only.
 - 11 dealers are sales-risk only.
 - Each region has 8 dealers. Region × risk counts (sales / inventory): Northeast 3/2, Southeast 3/1, Midwest 2/2, Southwest 2/2, West 2/2.
 - The one combined-risk dealer is in the Northeast; early-overstock-watch dealers are in the West (2) and the Southeast (1), per `GET /regions/summary`.
+- The ranked at-risk list (`GET /dealers/at-risk`) has 20 dealers: 1 in tier 1 (dealer 111), 3 in tier 2 (102, 105, 130), 8 in tier 3 and 8 in tier 4. Rank 20 is dealer 125.
 - In this synthetic dataset, dealer size does not appear to explain inventory risk.
 
 ---
@@ -108,6 +112,7 @@ Flags use unrounded values. Rounding is for display only.
 - A typed response model that validates API output; nullable fields are explicit and documented in `/docs`.
 - Pandas-versus-SQL cross-validation, kept as automated tests.
 - Test-first workflow (red, then green) for new behaviour.
+- Mutation check on the ranking logic: the supply ordering was temporarily removed from the SQL to confirm the ordering tests fail, then restored.
 - Deterministic query ordering.
 - Reproducible virtual environment; small, single-purpose Git commits; code and README committed separately.
 - Formatting and linting with Black and Ruff.
@@ -121,6 +126,9 @@ Flags use unrounded values. Rounding is for display only.
 - No CI pipeline yet; tests run locally.
 - `/health` has no response model, so `/docs` shows a generic example for it.
 - The region summary query exists both in `sql/day14_region_summary.sql` and in `src/db.py`; update both if the logic changes.
+- The at-risk ranking query exists both in `sql/day15_at_risk_dealers.sql` and in `src/db.py`; update both if the logic changes.
+- `NULLS FIRST` for a NULL `months_of_supply` is in the ranking SQL but untested: no at-risk dealer has a NULL value today.
+- Within tier 3 the order uses months of supply, a weak signal there (all under 3.2 months), so a dealer at 45.5% of target can rank below one at 47.4%. This follows from the chosen rule.
 - Dev tools (Black, Ruff) are not yet in a separate dev requirements file.
 - Old Day 1-4 scripts have import-order lint warnings (Ruff I001), deliberately left unchanged.
 - All data is synthetic, so findings are illustrative.
@@ -139,6 +147,9 @@ Flags use unrounded values. Rounding is for display only.
 - **Check that the setup file installs.** `requirements.txt` once contained a pasted shell command (`printf '\n' >> requirements.txt`) that would have broken `pip install -r` for anyone cloning the repo. It was found by re-reading the setup steps and fixed in `d0b7ef6`.
 - **Rounding differs by tool.** Python/NumPy round ties to even; PostgreSQL `numeric` rounds half up. Keep flags on unrounded values.
 - **Check your own numbers.** Several counts were corrected during the project by re-running the query (for example, the sales-risk count is 12, not 17), and a claim is only quoted after a query confirms it: all 8 inventory-only dealers were verified at 100% of target or higher (range 100.0% to 127.3%) before it went into this report.
+- **Declare static routes before dynamic ones.** `/dealers/at-risk` registered after `/dealers/{dealer_id}` would be read as an id and return 422. The static route comes first, and a test for the 200 response protects it.
+- **A passing test is not proof it can fail.** Removing the supply ordering from the ranking SQL made exactly the two within-tier tests fail (2 failed, 31 passed); restoring it gave 57 passed.
+- **SQL NULL becomes NaN in pandas.** A test that checks `is None` on a DataFrame value never fires, so NULL branches written that way looked tested but were not. They were removed.
 
 ---
 
@@ -172,11 +183,13 @@ Flags use unrounded values. Rounding is for display only.
 
 **Day 14: Region summary endpoint.** Added `sql/day14_region_summary.sql` and `get_region_summary()` in `db.py` (one row per region, `COUNT(*) FILTER` per risk flag), a six-field `RegionSummary` model, and `GET /regions/summary`. Tests check every region's counts against independently derived values, the network totals (40 / 12 / 9 / 1 / 3), the field set and the alphabetical order (suite 34 to 44). Pushed as `e7eddf7` (SQL) and `ec0f00c` (code and tests).
 
+**Day 15: Ranked at-risk dealers endpoint.** Added `sql/day15_at_risk_dealers.sql` (risk tiers and `ROW_NUMBER()`), `get_at_risk_dealers(limit)` in `db.py` with a bound `LIMIT`, a `RankedDealer` model (the `Dealer` fields plus `rank` and `risk_tier`) and `GET /dealers/at-risk`, registered before `/dealers/{dealer_id}`. Ranking: tier, then months of supply (highest first), then dealer id. Tests cover tier counts (1 / 3 / 8 / 8), continuous ranks, within-tier order, anchor positions and `limit` handling (suite 44 to 57). A mutation check confirmed the ordering tests fail when the supply ordering is removed. Pushed as `59ee7c1` (SQL) and `0488e1e` (code and tests).
+
 ---
 
 ## 9. Roadmap
 
-**Next:** more dealer analytics endpoints, reusing the response-model pattern (for example, a ranked list of at-risk dealers).
+**Next:** housekeeping and hardening (dev requirements, pinned dependencies), then month-parameterized views.
 
 **Then:**
 
