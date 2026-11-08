@@ -1,6 +1,6 @@
 # Automotive AI Lab: Project Progress Summary
 
-**Last updated:** 7 Nov 2026 · **Latest code commit:** `0488e1e` (Add ranked at-risk dealers endpoint with tests) · **Tests:** 57 passing
+**Last updated:** 8 Nov 2026 · **Latest code commit:** `0488e1e` (Add ranked at-risk dealers endpoint with tests) · **Tests:** 57 passing
 **Repository:** https://github.com/PRASHANTAPAUDEL24/automotive-ai-lab
 **Author:** Prashanta Paudel
 
@@ -28,7 +28,7 @@ The project builds a data and analytics foundation for AI-powered automotive dea
 - Pydantic response models (`Dealer`: 17 fields, 5 nullable; `RegionSummary`: region plus 5 count fields; `RankedDealer`: `Dealer` plus `rank` and `risk_tier`) that validate API output and drive the schemas shown in `/docs`.
 - A pytest suite of 57 tests (33 database-layer, 24 API-layer), run without starting a server.
 
-**Next step:** housekeeping and hardening: a dev requirements file and pinned dependencies, then month-parameterized views.
+**Next step:** month-parameterized views, so the scorecard is no longer fixed to September 2026.
 
 **Architecture**
 
@@ -49,9 +49,9 @@ Synthetic CSV data
 
 ```bash
 # one-time setup
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+python -m pip install -r requirements-dev.txt
 
 # database connection (never committed; .env is in .gitignore)
 export DATABASE_URL="postgresql+psycopg://<user>@localhost:5432/automotive_ai_lab"
@@ -122,14 +122,14 @@ Flags use unrounded values. Rounding is for display only.
 ## 6. Known limitations
 
 - All views are fixed to month `2026-09`. Month-parameterized views are planned.
-- `requirements.txt` is unpinned. Dependencies are not locked.
+- Direct dependencies are pinned in `requirements.txt` and `requirements-dev.txt`, but transitive packages (for example Starlette) are not locked.
+- The Day 16 clean-clone test validated a fresh Python environment against the existing local PostgreSQL database; it did not rebuild PostgreSQL from scratch.
 - No CI pipeline yet; tests run locally.
 - `/health` has no response model, so `/docs` shows a generic example for it.
 - The region summary query exists both in `sql/day14_region_summary.sql` and in `src/db.py`; update both if the logic changes.
 - The at-risk ranking query exists both in `sql/day15_at_risk_dealers.sql` and in `src/db.py`; update both if the logic changes.
 - `NULLS FIRST` for a NULL `months_of_supply` is in the ranking SQL but untested: no at-risk dealer has a NULL value today.
 - Within tier 3 the order uses months of supply, a weak signal there (all under 3.2 months), so a dealer at 45.5% of target can rank below one at 47.4%. This follows from the chosen rule.
-- Dev tools (Black, Ruff) are not yet in a separate dev requirements file.
 - Old Day 1-4 scripts have import-order lint warnings (Ruff I001), deliberately left unchanged.
 - All data is synthetic, so findings are illustrative.
 - Terminal `git push` prompts for credentials; pushes currently go through GitHub Desktop.
@@ -150,6 +150,8 @@ Flags use unrounded values. Rounding is for display only.
 - **Declare static routes before dynamic ones.** `/dealers/at-risk` registered after `/dealers/{dealer_id}` would be read as an id and return 422. The static route comes first, and a test for the 200 response protects it.
 - **A passing test is not proof it can fail.** Removing the supply ordering from the ranking SQL made exactly the two within-tier tests fail (2 failed, 31 passed); restoring it gave 57 passed.
 - **SQL NULL becomes NaN in pandas.** A test that checks `is None` on a DataFrame value never fires, so NULL branches written that way looked tested but were not. They were removed.
+- **Verify which executable ran.** In the clean-clone test, a bare `black` reported version 24.8.0 instead of the pinned 26.10.1, and `which -a` showed Conda copies of `black` and `pytest` further down the PATH. The likely cause is that zsh had cached the venv's `bin` folder before the install. Because it was unclear which `pytest` the first run used, the proof is the later `python -m pytest` run (57 passed). Running tools as `python -m` (or `hash -r` after installing) uses the environment's own copy.
+- **Formatting depends on the exact tool version.** The older Black wanted to re-wrap three SQL query strings in `src/db.py` that the pinned version leaves alone, so Black is pinned in `requirements-dev.txt` and tools are run through `python -m`.
 
 ---
 
@@ -185,18 +187,19 @@ Flags use unrounded values. Rounding is for display only.
 
 **Day 15: Ranked at-risk dealers endpoint.** Added `sql/day15_at_risk_dealers.sql` (risk tiers and `ROW_NUMBER()`), `get_at_risk_dealers(limit)` in `db.py` with a bound `LIMIT`, a `RankedDealer` model (the `Dealer` fields plus `rank` and `risk_tier`) and `GET /dealers/at-risk`, registered before `/dealers/{dealer_id}`. Ranking: tier, then months of supply (highest first), then dealer id. Tests cover tier counts (1 / 3 / 8 / 8), continuous ranks, within-tier order, anchor positions and `limit` handling (suite 44 to 57). A mutation check confirmed the ordering tests fail when the supply ordering is removed. Pushed as `59ee7c1` (SQL) and `0488e1e` (code and tests).
 
+**Day 16: Reproducible setup.** Pinned the direct dependencies to the versions the suite passes with, split `requirements.txt` (runtime) from a new `requirements-dev.txt` (pytest, httpx2, Black, Ruff), and updated the setup steps. A clean-clone test (fresh clone, new virtual environment, install from `requirements-dev.txt` only) gave 57 passed with Ruff and Black clean. An initial bare `black` command reported Black 24.8.0 instead of the pinned 26.10.1, and `which -a` showed Conda copies of `black` and `pytest` on the PATH, so the final checks were run through `python -m`. Committed as `6178da2`.
+
 ---
 
 ## 9. Roadmap
 
-**Next:** housekeeping and hardening (dev requirements, pinned dependencies), then month-parameterized views.
+**Next:** month-parameterized views, so the scorecard and API are no longer fixed to September 2026.
 
 **Then:**
 
 - Richer FastAPI endpoints
-- Month-parameterized views
 - Additional sales and inventory queries, with more automated API tests
-- Dev requirements, pinned dependencies and CI
+- CI that runs the tests on every push, and a full lock file for transitive dependencies
 - LLM APIs and retrieval-augmented generation (RAG)
 - Dealer operations copilot and supply-chain risk assistant
 - AI agents
