@@ -1,6 +1,6 @@
 # Automotive AI Lab: Project Progress Summary
 
-**Last updated:** 8 Nov 2026 · **Latest code commit:** `0488e1e` (Add ranked at-risk dealers endpoint with tests) · **Tests:** 57 passing
+**Last updated:** 9 Nov 2026 · **Latest code commit:** `cfdade0` (Add monthly dealer performance view) · **Tests:** 57 passing
 **Repository:** https://github.com/PRASHANTAPAUDEL24/automotive-ai-lab
 **Author:** Prashanta Paudel
 
@@ -8,12 +8,12 @@
 
 ## 1. Current state (read this first)
 
-The project builds a data and analytics foundation for AI-powered automotive dealer operations. It uses a fully **synthetic** dataset for the fictional brand **Vertex Motors** (40 dealers, 5 regions, September 2026).
+The project builds a data and analytics foundation for AI-powered automotive dealer operations. It uses a fully **synthetic** dataset for the fictional brand **Vertex Motors** with 40 dealers across 5 regions. Sales and target data cover 24 months from October 2024 through September 2026; inventory is a single snapshot as of September 30, 2026.
 
 **What works today**
 
 - Dealer sales and inventory analytics, implemented twice (pandas and PostgreSQL) and cross-checked against each other.
-- Three reusable PostgreSQL views, ending in a `dealer_scorecard` view with four business-risk flags.
+- Four reusable PostgreSQL views, from a monthly `dealer_monthly_performance` view to a `dealer_scorecard` view with four business-risk flags.
 - A safe, parameterized Python query layer (`src/db.py`).
 - A FastAPI service with five endpoints:
 
@@ -28,7 +28,7 @@ The project builds a data and analytics foundation for AI-powered automotive dea
 - Pydantic response models (`Dealer`: 17 fields, 5 nullable; `RegionSummary`: region plus 5 count fields; `RankedDealer`: `Dealer` plus `rank` and `risk_tier`) that validate API output and drive the schemas shown in `/docs`.
 - A pytest suite of 57 tests (33 database-layer, 24 API-layer), run without starting a server.
 
-**Next step:** month-parameterized views, so the scorecard is no longer fixed to September 2026.
+**Next step:** connect the Python query layer and FastAPI endpoints to the new monthly performance SQL view while preserving September compatibility.
 
 **Architecture**
 
@@ -121,7 +121,8 @@ Flags use unrounded values. Rounding is for display only.
 
 ## 6. Known limitations
 
-- All views are fixed to month `2026-09`. Month-parameterized views are planned.
+- Sales and target performance are month-aware in SQL through `dealer_monthly_performance`, covering October 2024 through September 2026. The Python query layer and API do not use that view yet. Inventory remains a single snapshot as of September 30, 2026, so `inventory_supply`, `dealer_scorecard`, and the current risk API outputs remain September-specific.
+- The current dataset has no zero-sales or missing-target dealer-months, so the zero-fill and `NULL`-achievement paths of the monthly view were checked once with a rolled-back test transaction, not by an automated test.
 - Direct dependencies are pinned in `requirements.txt` and `requirements-dev.txt`, but transitive packages (for example Starlette) are not locked.
 - The Day 16 clean-clone test validated a fresh Python environment against the existing local PostgreSQL database; it did not rebuild PostgreSQL from scratch.
 - No CI pipeline yet; tests run locally.
@@ -152,6 +153,10 @@ Flags use unrounded values. Rounding is for display only.
 - **SQL NULL becomes NaN in pandas.** A test that checks `is None` on a DataFrame value never fires, so NULL branches written that way looked tested but were not. They were removed.
 - **Verify which executable ran.** In the clean-clone test, a bare `black` reported version 24.8.0 instead of the pinned 26.10.1, and `which -a` showed Conda copies of `black` and `pytest` further down the PATH. The likely cause is that zsh had cached the venv's `bin` folder before the install. Because it was unclear which `pytest` the first run used, the proof is the later `python -m pytest` run (57 passed). Running tools as `python -m` (or `hash -r` after installing) uses the environment's own copy.
 - **Formatting depends on the exact tool version.** The older Black wanted to re-wrap three SQL query strings in `src/db.py` that the pinned version leaves alone, so Black is pinned in `requirements-dev.txt` and tools are run through `python -m`.
+- **Refactor behind a stable interface.** `dealer_performance` became a September filter over the new monthly view, so the views that depend on it did not change, and an export of the September scorecard before and after the change was identical.
+- **Define the grain, then make absence explicit.** Cross-joining dealers with the months from both sales and targets turns a missing sales row into `units_sold = 0` instead of a missing row.
+- **Prove a fallback path the data never exercises.** A test transaction inserted a dealer with no sales, queried the view and rolled back, leaving the data unchanged.
+- **A spot check is not a full check.** An independent pandas calculation from the CSV files matched all 960 dealer-months, not just one month.
 
 ---
 
@@ -189,11 +194,13 @@ Flags use unrounded values. Rounding is for display only.
 
 **Day 16: Reproducible setup.** Pinned the direct dependencies to the versions the suite passes with, split `requirements.txt` (runtime) from a new `requirements-dev.txt` (pytest, httpx2, Black, Ruff), and updated the setup steps. A clean-clone test (fresh clone, new virtual environment, install from `requirements-dev.txt` only) gave 57 passed with Ruff and Black clean. An initial bare `black` command reported Black 24.8.0 instead of the pinned 26.10.1, and `which -a` showed Conda copies of `black` and `pytest` on the PATH, so the final checks were run through `python -m`. Committed as `6178da2`.
 
+**Day 17: Monthly dealer performance SQL layer.** Added `dealer_monthly_performance` to `sql/03_views.sql`, with one row per dealer and month. Months are derived from the union of sales and target months, sales are aggregated by dealer and month before joining, and every dealer is crossed with every available month so missing sales become zero. The existing `dealer_performance` view is now a thin September 2026 compatibility view, leaving `inventory_supply` and `dealer_scorecard` unchanged. The new view contains 960 rows across 40 dealers and 24 months. A rollback test with a temporary dealer confirmed all 24 dealer-month rows appear with zero sales when no activity exists. An independent pandas comparison matched SQL for all 960 dealer-months, the September scorecard matched the pre-refactor export byte-for-byte, and the existing suite remained at 57 passed. Inventory was verified as a single snapshot: all 4,041 inventory rows imply September 30, 2026. Committed as `cfdade0`; README documentation as `0b31cad`.
+
 ---
 
 ## 9. Roadmap
 
-**Next:** month-parameterized views, so the scorecard and API are no longer fixed to September 2026.
+**Next:** update the Python query layer and FastAPI to consume `dealer_monthly_performance` for month-aware sales and target performance, while keeping inventory-dependent risk outputs tied to the September 30, 2026 snapshot.
 
 **Then:**
 
