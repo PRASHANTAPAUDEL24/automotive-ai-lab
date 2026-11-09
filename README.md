@@ -47,6 +47,7 @@ The dataset includes:
 - [x] Day 14: Region summary endpoint (`GET /regions/summary`) with SQL, database function, response model, and tests
 - [x] Day 15: Ranked at-risk dealers endpoint (`GET /dealers/at-risk`) with SQL ranking, `RankedDealer` response model, optional `limit`, and tests
 - [x] Day 16: Pinned dependencies, separate dev requirements, and a clean-clone install test
+- [x] Day 17: Monthly dealer performance SQL view across 24 months, with September compatibility preserved
 - [ ] Week 3: FastAPI
 - [ ] Week 4: Automotive Dealer Analytics API
 - [ ] Later: LLM APIs, RAG, agents, Docker, Azure
@@ -112,6 +113,8 @@ psql -P pager=off automotive_ai_lab -f sql/day5_dealer_status_cte.sql
 psql -P pager=off automotive_ai_lab -f sql/day6_inventory_aging.sql
 psql -P pager=off automotive_ai_lab -f sql/day7_dealer_scorecard.sql
 ```
+
+`sql/03_views.sql` now creates `dealer_monthly_performance`, with one row per dealer and month for sales and target performance. The existing `dealer_performance` view remains a September 2026 compatibility view so the downstream inventory and scorecard logic is unchanged.
 
 Export the SQL flags and compare them with the Day 4 pandas scorecard. Run `src/day4_dealer_scorecard.py` first so `data/dealer_scorecard.csv` exists.
 
@@ -249,12 +252,14 @@ For September 2026 synthetic data:
 
 The PostgreSQL scorecard was cross-checked against the Day 4 pandas scorecard. All four risk flags matched for all 40 dealers.
 
+The Day 17 `dealer_monthly_performance` view was also cross-checked independently against the source CSV files. SQL matched pandas for all 960 dealer-months across 40 dealers and 24 months. The September 2026 scorecard was exported before and after the refactor and matched byte-for-byte.
+
 ## Limitations
 
 - All data is synthetic, so the findings demonstrate the analytical method, not real-world conclusions.
 - Months of supply currently uses September sales only.
 - The 80%, 90-day, 4-month, and 30% thresholds are business-rule assumptions and should be validated and tuned with stakeholders in a real deployment.
-- PostgreSQL views are currently fixed to September 2026; future API work will need month-parameterized logic.
+- Sales and target performance are available in SQL for all 24 months (October 2024 through September 2026), but the Python layer and API do not use the monthly view yet. Inventory is a single snapshot as of September 30, 2026, so `inventory_supply`, `dealer_scorecard`, and the current API risk outputs remain September-specific until historical inventory snapshots are available.
 - The at-risk ranking order (risk tier, then months of supply) is a prioritization heuristic, not a validated predictive metric. Within the sales-risk-only tier, months of supply is a weak signal because all of those dealers are under 3.2 months.
 
 ## Planned Projects
