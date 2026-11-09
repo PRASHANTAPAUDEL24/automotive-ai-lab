@@ -4,33 +4,59 @@
 DROP VIEW IF EXISTS dealer_scorecard CASCADE;
 DROP VIEW IF EXISTS inventory_supply CASCADE;
 DROP VIEW IF EXISTS dealer_performance CASCADE;
+DROP VIEW IF EXISTS dealer_monthly_performance CASCADE;
 
-CREATE VIEW dealer_performance AS
+-- One row per dealer and month. A dealer with no sales in a month gets units_sold = 0.
+CREATE VIEW dealer_monthly_performance AS
+WITH months AS (
+    SELECT month
+    FROM sales_monthly
 
-WITH september_sales AS (
+    UNION
+
+    SELECT month
+    FROM dealer_targets
+),
+monthly_sales AS (
     SELECT
         dealer_id,
+        month,
         SUM(units_sold) AS units_sold
     FROM sales_monthly
-    WHERE month = '2026-09'
-    GROUP BY dealer_id
+    GROUP BY
+        dealer_id,
+        month
 )
-
 SELECT
     d.dealer_id,
     d.dealer_name,
+    m.month,
     COALESCE(s.units_sold, 0) AS units_sold,
     t.target_units,
     COALESCE(s.units_sold, 0) * 100.0
         / NULLIF(t.target_units, 0) AS achievement_pct
 FROM dealers d
-LEFT JOIN september_sales s
+CROSS JOIN months m
+LEFT JOIN monthly_sales s
     ON d.dealer_id = s.dealer_id
+    AND m.month = s.month
 LEFT JOIN dealer_targets t
     ON d.dealer_id = t.dealer_id
-    AND t.month = '2026-09';
+    AND m.month = t.month;
 
 
+CREATE VIEW dealer_performance AS
+SELECT
+    dealer_id,
+    dealer_name,
+    units_sold,
+    target_units,
+    achievement_pct
+FROM dealer_monthly_performance
+WHERE month = '2026-09';
+
+
+-- Inventory metrics describe the snapshot as of 2026-09-30.
 CREATE VIEW inventory_supply AS
 
 WITH inventory_by_dealer AS (
