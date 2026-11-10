@@ -1,6 +1,6 @@
 # Automotive AI Lab: Project Progress Summary
 
-**Last updated:** 9 Nov 2026 · **Latest code commit:** `cfdade0` (Add monthly dealer performance view) · **Tests:** 57 passing
+**Last updated:** 10 Nov 2026 · **Latest code commit:** `fc34fbd` (Add monthly performance endpoint with tests) · **Tests:** 129 passing
 **Repository:** https://github.com/PRASHANTAPAUDEL24/automotive-ai-lab
 **Author:** Prashanta Paudel
 
@@ -24,11 +24,12 @@ The project builds a data and analytics foundation for AI-powered automotive dea
 | `GET /dealers/{dealer_id}` | One dealer scorecard. Unknown id returns 404; non-integer id returns 422 |
 | `GET /regions/summary` | One row per region: dealer count and counts of sales-risk, inventory-risk, combined-risk and early-overstock-watch dealers |
 | `GET /dealers/at-risk` | The 20 sales-risk or inventory-risk dealers, ranked (1 = most urgent). Optional `limit` (minimum 1) keeps the global ranks; 0 or a non-integer returns 422 |
+| `GET /performance` | Dealer sales and target performance for the required `month` (`YYYY-MM`), 2024-10 to 2026-09. 422 for a malformed month, 404 for a well-formed month with no data. |
 
-- Pydantic response models (`Dealer`: 17 fields, 5 nullable; `RegionSummary`: region plus 5 count fields; `RankedDealer`: `Dealer` plus `rank` and `risk_tier`) that validate API output and drive the schemas shown in `/docs`.
-- A pytest suite of 57 tests (33 database-layer, 24 API-layer), run without starting a server.
+- Pydantic response models (`Dealer`: 17 fields, 5 nullable; `RegionSummary`: region plus 5 count fields; `RankedDealer`: `Dealer` plus `rank` and `risk_tier`; `MonthlyPerformance`: 6 fields, 2 nullable) that validate API output and drive the schemas shown in `/docs`.
+- A pytest suite of 129 tests: 33 core database-layer tests, 48 monthly-performance database/query tests, and 48 API-layer tests, run without starting a server.
 
-**Next step:** connect the Python query layer and FastAPI endpoints to the new monthly performance SQL view while preserving September compatibility.
+**Next step:** Day 19: add a per-dealer monthly performance history beyond the single-month `/performance` endpoint, keeping inventory and risk metrics explicitly September-snapshot-specific.
 
 **Architecture**
 
@@ -121,7 +122,10 @@ Flags use unrounded values. Rounding is for display only.
 
 ## 6. Known limitations
 
-- Sales and target performance are month-aware in SQL through `dealer_monthly_performance`, covering October 2024 through September 2026. The Python query layer and API do not use that view yet. Inventory remains a single snapshot as of September 30, 2026, so `inventory_supply`, `dealer_scorecard`, and the current risk API outputs remain September-specific.
+- Sales and target performance are month-aware across SQL, Python and FastAPI through `dealer_monthly_performance` and `GET /performance?month=YYYY-MM`, covering October 2024 through September 2026.
+- `inventory_supply`, `dealer_scorecard` and the endpoints built on them (`GET /dealers`, `GET /dealers/{dealer_id}`, `GET /dealers/at-risk` and `GET /regions/summary`) remain fixed to September 2026. Inventory is a single snapshot as of September 30, 2026, so historical inventory and risk analysis is not yet month-aware.
+- `GET /performance` returns all 40 dealers for one month; there is no per-dealer history or month range yet.
+- The month format rule exists in two places: the `Query` pattern in `src/api.py` and the regular expression in `src/db.py`; update both if the format changes.
 - The current dataset has no zero-sales or missing-target dealer-months, so the zero-fill and `NULL`-achievement paths of the monthly view were checked once with a rolled-back test transaction, not by an automated test.
 - Direct dependencies are pinned in `requirements.txt` and `requirements-dev.txt`, but transitive packages (for example Starlette) are not locked.
 - The Day 16 clean-clone test validated a fresh Python environment against the existing local PostgreSQL database; it did not rebuild PostgreSQL from scratch.
@@ -157,6 +161,9 @@ Flags use unrounded values. Rounding is for display only.
 - **Define the grain, then make absence explicit.** Cross-joining dealers with the months from both sales and targets turns a missing sales row into `units_sold = 0` instead of a missing row.
 - **Prove a fallback path the data never exercises.** A test transaction inserted a dealer with no sales, queried the view and rolled back, leaving the data unchanged.
 - **A spot check is not a full check.** An independent pandas calculation from the CSV files matched all 960 dealer-months, not just one month.
+- **Do not reuse a broad exception type for a narrow meaning.** `ValueError` already meant a missing `DATABASE_URL` in `get_engine()`, so the month errors are their own classes (`InvalidMonthError`, `MonthNotFoundError`) and the route never catches a bare `ValueError`. A test that removes `DATABASE_URL` proves a configuration error still returns 500, not a 4xx.
+- **Make a test fail for the right reason.** Two layers return 422 for a bad month (the `Query` pattern and the `InvalidMonthError` handler), so the status code alone cannot tell them apart; checking `detail[0]['loc'] == ['query', 'month']` proves the pattern produced it. Likewise the unknown-month test checks the message, because a missing route also returns 404.
+- **Prove regex traps with a mutation.** `\d` accepts non-ASCII digits and `$` can accept a trailing newline. Changing `[0-9]` to `\d` made the Arabic-Indic digit case fail, and changing `fullmatch` to `match` made three format cases fail, so both guards are tested, not assumed.
 
 ---
 
@@ -196,11 +203,13 @@ Flags use unrounded values. Rounding is for display only.
 
 **Day 17: Monthly dealer performance SQL layer.** Added `dealer_monthly_performance` to `sql/03_views.sql`, with one row per dealer and month. Months are derived from the union of sales and target months, sales are aggregated by dealer and month before joining, and every dealer is crossed with every available month so missing sales become zero. The existing `dealer_performance` view is now a thin September 2026 compatibility view, leaving `inventory_supply` and `dealer_scorecard` unchanged. The new view contains 960 rows across 40 dealers and 24 months. A rollback test with a temporary dealer confirmed all 24 dealer-month rows appear with zero sales when no activity exists. An independent pandas comparison matched SQL for all 960 dealer-months, the September scorecard matched the pre-refactor export byte-for-byte, and the existing suite remained at 57 passed. Inventory was verified as a single snapshot: all 4,041 inventory rows imply September 30, 2026. Committed as `cfdade0`; README documentation as `0b31cad`.
 
+**Day 18: Monthly performance Python/API layer.** Wrote the tests first and reviewed the red run before implementing. Added `get_available_months()` and `get_monthly_performance(month)` in `src/db.py`, with strict ASCII `YYYY-MM` validation (`re.fullmatch` on `[0-9]{4}-(0[1-9]|1[0-2])`, checked before any database call), dedicated `InvalidMonthError` and `MonthNotFoundError` exceptions, and deterministic dealer ordering. Added the `MonthlyPerformance` Pydantic model and the `GET /performance?month=YYYY-MM` endpoint. The endpoint requires a month, returns 422 for malformed input, 404 (`Month 2030-01 not found`) for a well-formed month with no data, and preserves nullable target and achievement fields; a missing `DATABASE_URL` still returns 500. Tests cover all 24 months, CSV-to-SQL equivalence across all 960 dealer-month rows, boundary months, malformed formats, nullability, missing `DATABASE_URL`, response validation and exception translation. Mutation checks: removing `ORDER BY` failed 25 tests; disabling the empty-result rule failed the three unknown-month tests; weakening `fullmatch` to `match` failed three format cases; replacing `[0-9]` with `\d` failed the Arabic-Indic digit case; weakening the API pattern, removing the `MonthNotFoundError` handler and removing the `InvalidMonthError` handler each failed their targeted tests. Suite 57 to 129. Committed as `4753341` (query and tests) and `fc34fbd` (endpoint and tests).
+
 ---
 
 ## 9. Roadmap
 
-**Next:** update the Python query layer and FastAPI to consume `dealer_monthly_performance` for month-aware sales and target performance, while keeping inventory-dependent risk outputs tied to the September 30, 2026 snapshot.
+**Next:** dealer-level monthly performance history, keeping historical sales and target analytics separate from the September-specific inventory and risk metrics.
 
 **Then:**
 
