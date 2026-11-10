@@ -6,6 +6,7 @@
 # reusable access to the dealer scorecard.
 
 import os
+import re
 from functools import lru_cache
 
 import pandas as pd
@@ -14,6 +15,14 @@ from sqlalchemy import create_engine, text
 
 class InvalidFilterError(ValueError):
     """Raised when a caller passes an unsupported filter value."""
+
+
+class InvalidMonthError(ValueError):
+    """Raised when a month is not a string in YYYY-MM format."""
+
+
+class MonthNotFoundError(ValueError):
+    """Raised when a well-formed month has no data."""
 
 
 ALLOWED_RISKS = {
@@ -199,3 +208,59 @@ def get_at_risk_dealers(limit=None):
         get_engine(),
         params={"limit": limit},
     )
+
+
+def get_available_months():
+    """Return the sorted months available in dealer_monthly_performance."""
+
+    query = text("""
+        SELECT DISTINCT month
+        FROM dealer_monthly_performance
+        ORDER BY month
+        """)
+
+    months = pd.read_sql(
+        query,
+        get_engine(),
+    )
+
+    return months["month"].tolist()
+
+
+def get_monthly_performance(month):
+    """
+    Return dealer sales and target performance for one month.
+
+    Raises InvalidMonthError for malformed month input and
+    MonthNotFoundError when a well-formed month has no data.
+    """
+
+    if not isinstance(month, str) or not re.fullmatch(
+        r"[0-9]{4}-(0[1-9]|1[0-2])",
+        month,
+    ):
+        raise InvalidMonthError(f"Invalid month: {month!r}. Expected YYYY-MM.")
+
+    query = text("""
+        SELECT
+            dealer_id,
+            dealer_name,
+            month,
+            units_sold,
+            target_units,
+            achievement_pct
+        FROM dealer_monthly_performance
+        WHERE month = :month
+        ORDER BY dealer_id
+        """)
+
+    performance = pd.read_sql(
+        query,
+        get_engine(),
+        params={"month": month},
+    )
+
+    if performance.empty:
+        raise MonthNotFoundError(f"Month {month} not found")
+
+    return performance
