@@ -48,6 +48,7 @@ The dataset includes:
 - [x] Day 15: Ranked at-risk dealers endpoint (`GET /dealers/at-risk`) with SQL ranking, `RankedDealer` response model, optional `limit`, and tests
 - [x] Day 16: Pinned dependencies, separate dev requirements, and a clean-clone install test
 - [x] Day 17: Monthly dealer performance SQL view across 24 months, with September compatibility preserved
+- [x] Day 18: Month-aware Python query and FastAPI endpoint (`GET /performance?month=YYYY-MM`) with validation, response model, and tests
 - [ ] Week 3: FastAPI
 - [ ] Week 4: Automotive Dealer Analytics API
 - [ ] Later: LLM APIs, RAG, agents, Docker, Azure
@@ -159,6 +160,7 @@ Interactive documentation is available at http://127.0.0.1:8000/docs.
 | `GET /dealers/{dealer_id}` | Returns one dealer scorecard. An unknown dealer id returns HTTP 404. A non-numeric id returns HTTP 422. |
 | `GET /regions/summary` | Returns one row per region, ordered by region: dealer count and the number of sales-risk, inventory-risk, combined-risk and early-overstock-watch dealers |
 | `GET /dealers/at-risk` | Returns the 20 sales-risk or inventory-risk dealers, ranked from most to least urgent. Optional `limit` (minimum 1) keeps the global ranks; `limit=0` or a non-integer returns 422 |
+| `GET /performance` | Returns dealer sales and target performance for the required `month` (`YYYY-MM`), for any month from 2024-10 to 2026-09. A malformed month returns 422, a well-formed month with no data returns 404, and target and achievement stay nullable. |
 
 Example:
 
@@ -185,6 +187,8 @@ If the data layer ever returns a value that does not match the model, the API re
 `GET /regions/summary` returns `RegionSummary` records. All six fields are required and non-nullable. For example, the Northeast row has 8 dealers, 3 sales-risk, 2 inventory-risk, 1 combined-risk and 0 early-overstock-watch dealers.
 
 `GET /dealers/at-risk` returns `RankedDealer` records: every `Dealer` field plus `rank` (1 is the most urgent dealer) and `risk_tier` (1 = combined risk, 2 = early overstock watch, 3 = sales risk only, 4 = inventory risk only). Dealers are ordered by risk tier, then months of supply (highest first, NULL first), then dealer ID as the tie-breaker. The optional `limit` applies after ranking, so `limit=5` returns ranks 1 to 5.
+
+`GET /performance?month=YYYY-MM` returns `MonthlyPerformance` records with six fields: `dealer_id`, `dealer_name`, `month`, `units_sold`, `target_units` and `achievement_pct`. The month is required and must match `YYYY-MM`. Malformed values return 422, while a well-formed month with no data returns 404. `target_units` is null when the dealer has no target row for the month; `achievement_pct` is null when the target is missing or zero (a zero target is returned as `0`). The response is ordered by `dealer_id`.
 
 ## Testing
 
@@ -254,12 +258,15 @@ The PostgreSQL scorecard was cross-checked against the Day 4 pandas scorecard. A
 
 The Day 17 `dealer_monthly_performance` view was also cross-checked independently against the source CSV files. SQL matched pandas for all 960 dealer-months across 40 dealers and 24 months. The September 2026 scorecard was exported before and after the refactor and matched byte-for-byte.
 
+The cross-check is now automated: `tests/test_monthly_performance.py` recomputes all 960 dealer-months from the source CSV files in pandas and compares them with `get_monthly_performance` for every month.
+
 ## Limitations
 
 - All data is synthetic, so the findings demonstrate the analytical method, not real-world conclusions.
 - Months of supply currently uses September sales only.
 - The 80%, 90-day, 4-month, and 30% thresholds are business-rule assumptions and should be validated and tuned with stakeholders in a real deployment.
-- Sales and target performance are available in SQL for all 24 months (October 2024 through September 2026), but the Python layer and API do not use the monthly view yet. Inventory is a single snapshot as of September 30, 2026, so `inventory_supply`, `dealer_scorecard`, and the current API risk outputs remain September-specific until historical inventory snapshots are available.
+- Sales and target performance are available through SQL, the Python query layer, and `GET /performance?month=YYYY-MM` for all 24 months from October 2024 through September 2026.
+- `inventory_supply`, `dealer_scorecard` and the endpoints built on them (`GET /dealers`, `GET /dealers/{dealer_id}`, `GET /dealers/at-risk` and `GET /regions/summary`) remain fixed to September 2026. Inventory is a single snapshot as of September 30, 2026, so historical inventory and risk analysis is not yet month-aware.
 - The at-risk ranking order (risk tier, then months of supply) is a prioritization heuristic, not a validated predictive metric. Within the sales-risk-only tier, months of supply is a weak signal because all of those dealers are under 3.2 months.
 
 ## Planned Projects
