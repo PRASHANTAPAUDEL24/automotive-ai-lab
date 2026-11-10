@@ -6,10 +6,11 @@
 # and JSON-safe conversion.
 
 import pandas as pd
+import pytest
 from fastapi.testclient import TestClient
 
 from api import app
-from db import get_engine, to_records
+from db import InvalidMonthError, get_engine, to_records
 
 client = TestClient(app)
 
@@ -372,3 +373,231 @@ def test_at_risk_response_has_expected_fields():
         "rank",
         "risk_tier",
     }
+
+
+def test_performance_endpoint_returns_40_dealers():
+    response = client.get(
+        "/performance",
+        params={"month": "2026-03"},
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert len(data) == 40
+    assert all(row["month"] == "2026-03" for row in data)
+
+
+def test_performance_response_has_expected_fields():
+    response = client.get(
+        "/performance",
+        params={"month": "2026-03"},
+    )
+
+    assert response.status_code == 200
+
+    assert set(response.json()[0].keys()) == {
+        "dealer_id",
+        "dealer_name",
+        "month",
+        "units_sold",
+        "target_units",
+        "achievement_pct",
+    }
+
+
+def test_performance_dealers_are_sorted_by_id():
+    response = client.get(
+        "/performance",
+        params={"month": "2026-03"},
+    )
+
+    assert response.status_code == 200
+
+    dealer_ids = [row["dealer_id"] for row in response.json()]
+
+    assert dealer_ids == sorted(dealer_ids)
+
+
+def test_performance_missing_month_returns_422():
+    response = client.get("/performance")
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "month",
+    [
+        "2026-3",
+        "2026-13",
+        "2026-00",
+        "202603",
+        " 2026-03",
+        "2026-03-01",
+        "abc",
+        "",
+        "2026-03\n",
+        "\u0662\u0660\u0662\u0666-03",
+    ],
+)
+def test_performance_invalid_month_format_returns_422(month):
+    response = client.get(
+        "/performance",
+        params={"month": month},
+    )
+
+    assert response.status_code == 422
+
+    detail = response.json()["detail"]
+
+    assert isinstance(detail, list)
+    assert detail[0]["loc"] == ["query", "month"]
+
+
+@pytest.mark.parametrize(
+    "month",
+    [
+        "2024-09",
+        "2026-10",
+        "2030-01",
+    ],
+)
+def test_performance_unknown_month_returns_404(month):
+    response = client.get(
+        "/performance",
+        params={"month": month},
+    )
+
+    assert response.status_code == 404
+    assert month in response.json()["detail"]
+
+
+def test_performance_null_fields_are_allowed(monkeypatch):
+    fake = pd.DataFrame(
+        [
+            {
+                "dealer_id": 999,
+                "dealer_name": "Test Dealer",
+                "month": "2026-03",
+                "units_sold": 0,
+                "target_units": None,
+                "achievement_pct": None,
+            }
+        ]
+    )
+
+    monkeypatch.setattr(
+        "api.get_monthly_performance",
+        lambda month: fake,
+    )
+
+    response = client.get(
+        "/performance",
+        params={"month": "2026-03"},
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()[0]
+
+    assert data["target_units"] is None
+    assert data["achievement_pct"] is None
+
+
+def test_performance_invalid_response_returns_500(monkeypatch):
+    fake = pd.DataFrame(
+        [
+            {
+                "dealer_id": "not-a-number",
+                "dealer_name": "Test Dealer",
+                "month": "2026-03",
+                "units_sold": 10,
+                "target_units": 20,
+                "achievement_pct": 50.0,
+            }
+        ]
+    )
+
+    monkeypatch.setattr(
+        "api.get_monthly_performance",
+        lambda month: fake,
+    )
+
+    test_client = TestClient(
+        app,
+        raise_server_exceptions=False,
+    )
+
+    response = test_client.get(
+        "/performance",
+        params={"month": "2026-03"},
+    )
+
+    assert response.status_code == 500
+
+
+def test_performance_missing_database_url_returns_500(monkeypatch):
+    get_engine.cache_clear()
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+
+    test_client = TestClient(
+        app,
+        raise_server_exceptions=False,
+    )
+
+    response = test_client.get(
+        "/performance",
+        params={"month": "2026-09"},
+    )
+
+    assert response.status_code == 500
+    assert "DATABASE_URL" not in response.text
+
+    get_engine.cache_clear()
+
+
+def test_performance_invalid_month_error_safety_net_returns_422(monkeypatch):
+    def raise_invalid_month(month):
+        raise InvalidMonthError(f"Invalid month: {month!r}. Expected YYYY-MM.")
+
+    monkeypatch.setattr(
+        "api.get_monthly_performance",
+        raise_invalid_month,
+    )
+
+    response = client.get(
+        "/performance",
+        params={"month": "2026-03"},
+    )
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": "Invalid month: '2026-03'. Expected YYYY-MM."}
+
+
+def test_performance_unknown_month_has_expected_detail():
+    response = client.get(
+        "/performance",
+        params={"month": "2030-01"},
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Month 2030-01 not found"}
+
+
+@pytest.mark.parametrize(
+    "month",
+    [
+        "2024-10",
+        "2026-09",
+    ],
+)
+def test_performance_boundary_months_return_40_dealers(month):
+    response = client.get(
+        "/performance",
+        params={"month": month},
+    )
+
+    assert response.status_code == 200
+    assert len(response.json()) == 40
+    assert all(row["month"] == month for row in response.json())

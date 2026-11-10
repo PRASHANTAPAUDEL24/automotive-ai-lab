@@ -8,13 +8,16 @@ from fastapi import FastAPI, HTTPException, Query
 
 from db import (
     InvalidFilterError,
+    InvalidMonthError,
+    MonthNotFoundError,
     get_at_risk_dealers,
     get_dealer,
+    get_monthly_performance,
     get_region_summary,
     get_scorecard,
     to_records,
 )
-from models import Dealer, RankedDealer, RegionSummary
+from models import Dealer, MonthlyPerformance, RankedDealer, RegionSummary
 
 app = FastAPI(
     title="Automotive Dealer Analytics API",
@@ -68,3 +71,27 @@ def dealer_by_id(dealer_id: int):
 def region_summary():
     summary = get_region_summary()
     return to_records(summary)
+
+
+@app.get("/performance", response_model=list[MonthlyPerformance])
+def monthly_performance(
+    month: str = Query(
+        ...,
+        pattern=r"^[0-9]{4}-(0[1-9]|1[0-2])$",
+        description="Month in YYYY-MM format.",
+    ),
+):
+    try:
+        performance = get_monthly_performance(month)
+    except MonthNotFoundError as error:
+        raise HTTPException(
+            status_code=404,
+            detail=str(error),
+        ) from error
+    except InvalidMonthError as error:
+        raise HTTPException(
+            status_code=422,
+            detail=str(error),
+        ) from error
+
+    return to_records(performance)

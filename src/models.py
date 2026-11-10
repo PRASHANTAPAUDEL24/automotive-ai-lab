@@ -77,3 +77,18 @@ class RankedDealer(Dealer):
             "4 = inventory risk only."
         )
     )
+
+
+class MonthlyPerformance(BaseModel):
+    """Sales and target performance for one dealer and month."""
+
+    dealer_id: int
+    dealer_name: str
+    month: str
+    units_sold: int
+    target_units: int | None = Field(
+        description="Monthly target units. Null when the dealer has no target row."
+    )
+    achievement_pct: float | None = Field(
+        description="Sales achievement versus target. Null when the target is missing or zero."
+    )
