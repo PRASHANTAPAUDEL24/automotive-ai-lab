@@ -25,6 +25,10 @@ class MonthNotFoundError(ValueError):
     """Raised when a well-formed month has no data."""
 
 
+class DealerNotFoundError(ValueError):
+    """Raised when a dealer has no monthly performance history."""
+
+
 ALLOWED_RISKS = {
     "sales_risk",
     "inventory_risk",
@@ -264,3 +268,35 @@ def get_monthly_performance(month):
         raise MonthNotFoundError(f"Month {month} not found")
 
     return performance
+
+
+def get_dealer_performance_history(dealer_id):
+    """
+    Return all monthly sales and target performance rows for one dealer.
+
+    Raises DealerNotFoundError when the dealer has no history.
+    """
+
+    query = text("""
+        SELECT
+            dealer_id,
+            dealer_name,
+            month,
+            units_sold,
+            target_units,
+            achievement_pct
+        FROM dealer_monthly_performance
+        WHERE dealer_id = :dealer_id
+        ORDER BY month
+        """)
+
+    history = pd.read_sql(
+        query,
+        get_engine(),
+        params={"dealer_id": dealer_id},
+    )
+
+    if history.empty:
+        raise DealerNotFoundError(f"Dealer {dealer_id} not found")
+
+    return history
