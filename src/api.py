@@ -7,11 +7,13 @@
 from fastapi import FastAPI, HTTPException, Query
 
 from db import (
+    DealerNotFoundError,
     InvalidFilterError,
     InvalidMonthError,
     MonthNotFoundError,
     get_at_risk_dealers,
     get_dealer,
+    get_dealer_performance_history,
     get_monthly_performance,
     get_region_summary,
     get_scorecard,
@@ -44,6 +46,29 @@ def dealers(region: str | None = None, risk: str | None = None):
         ) from error
 
     return to_records(scorecard)
+
+
+@app.get(
+    "/dealers/{dealer_id}/performance",
+    response_model=list[MonthlyPerformance],
+)
+def dealer_performance_history(dealer_id: int):
+    """
+    Return the complete monthly sales and target history for one dealer.
+
+    Unknown dealers return 404. Path validation for dealer_id is handled
+    by FastAPI before this function runs.
+    """
+
+    try:
+        history = get_dealer_performance_history(dealer_id)
+    except DealerNotFoundError as error:
+        raise HTTPException(
+            status_code=404,
+            detail=str(error),
+        ) from error
+
+    return to_records(history)
 
 
 @app.get("/dealers/at-risk", response_model=list[RankedDealer])
