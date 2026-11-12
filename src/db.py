@@ -26,7 +26,11 @@ class MonthNotFoundError(ValueError):
 
 
 class DealerNotFoundError(ValueError):
-    """Raised when a dealer has no monthly performance history."""
+    """Raised when a requested dealer does not exist."""
+
+
+class InvalidMonthRangeError(ValueError):
+    """Raised when the requested month range is invalid."""
 
 
 ALLOWED_RISKS = {
@@ -270,33 +274,94 @@ def get_monthly_performance(month):
     return performance
 
 
-def get_dealer_performance_history(dealer_id):
+def _validate_optional_month(value, field_name):
     """
-    Return all monthly sales and target performance rows for one dealer.
+    Validate an optional month bound in strict ASCII YYYY-MM format.
 
-    Raises DealerNotFoundError when the dealer has no history.
+    None represents an omitted bound. Invalid types or formats raise
+    InvalidMonthError.
     """
+    if value is None:
+        return
 
-    query = text("""
-        SELECT
-            dealer_id,
-            dealer_name,
-            month,
-            units_sold,
-            target_units,
-            achievement_pct
-        FROM dealer_monthly_performance
-        WHERE dealer_id = :dealer_id
-        ORDER BY month
-        """)
+    if not isinstance(value, str):
+        raise InvalidMonthError(f"{field_name} month must use YYYY-MM format")
+
+    if (
+        re.fullmatch(
+            r"[0-9]{4}-(0[1-9]|1[0-2])",
+            value,
+        )
+        is None
+    ):
+        raise InvalidMonthError(f"{field_name} month must use YYYY-MM format")
+
+
+def get_dealer_performance_history(
+    dealer_id,
+    start=None,
+    end=None,
+):
+    """
+    Return monthly sales and target performance for one dealer.
+
+    Optional start and end bounds use strict YYYY-MM format and are
+    inclusive. When neither bound is supplied, the complete available
+    history is returned.
+
+    Raises DealerNotFoundError when the dealer does not exist.
+    Raises InvalidMonthError for malformed month bounds.
+    Raises InvalidMonthRangeError when start is after end.
+    """
+    _validate_optional_month(start, "start")
+    _validate_optional_month(end, "end")
+
+    if start is not None and end is not None and start > end:
+        raise InvalidMonthRangeError("start month must not be after end month")
+
+    clauses = ["dealer_id = :dealer_id"]
+    params = {"dealer_id": dealer_id}
+
+    if start is not None:
+        clauses.append("month >= :start")
+        params["start"] = start
+
+    if end is not None:
+        clauses.append("month <= :end")
+        params["end"] = end
+
+    # Only fixed SQL fragments are joined here; user values stay bound parameters.
+    query = text(f"""
+    SELECT
+        dealer_id,
+        dealer_name,
+        month,
+        units_sold,
+        target_units,
+        achievement_pct
+    FROM dealer_monthly_performance
+    WHERE {" AND ".join(clauses)}
+    ORDER BY month
+    """)
 
     history = pd.read_sql(
         query,
         get_engine(),
-        params={"dealer_id": dealer_id},
+        params=params,
     )
 
     if history.empty:
-        raise DealerNotFoundError(f"Dealer {dealer_id} not found")
+        dealer_exists = pd.read_sql(
+            text("""
+                SELECT 1
+                FROM dealers
+                WHERE dealer_id = :dealer_id
+                """),
+            get_engine(),
+            params={"dealer_id": dealer_id},
+        )
+
+        if dealer_exists.empty:
+            raise DealerNotFoundError(f"Dealer {dealer_id} not found")
 
     return history
