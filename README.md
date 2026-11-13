@@ -1,5 +1,7 @@
 # Automotive AI Lab
 
+[![CI](https://github.com/PRASHANTAPAUDEL24/automotive-ai-lab/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/PRASHANTAPAUDEL24/automotive-ai-lab/actions/workflows/ci.yml)
+
 Portfolio project building the data and analytics foundation for AI-powered
 automotive dealer operations using a fully synthetic dataset for the fictional
 brand **Vertex Motors**.
@@ -51,6 +53,7 @@ The dataset includes:
 - [x] Day 18: Month-aware Python query and FastAPI endpoint (`GET /performance?month=YYYY-MM`) with validation, response model, and tests
 - [x] Day 19: Dealer monthly performance history (`GET /dealers/{dealer_id}/performance`) with query, dedicated 404 handling, response validation, and tests
 - [x] Day 20: Optional inclusive `start` and `end` month filters for `GET /dealers/{dealer_id}/performance`, with empty-window handling, validation, and tests
+- [x] Day 21: GitHub Actions CI that rebuilds PostgreSQL from the repository's SQL scripts and tracked CSV files on a fresh runner, then runs Black, Ruff and the full test suite on every push and pull request
 - [ ] Week 3: FastAPI
 - [ ] Week 4: Automotive Dealer Analytics API
 - [ ] Later: LLM APIs, RAG, agents, Docker, Azure
@@ -233,6 +236,10 @@ The current test suite covers:
 - inclusive `start` and `end` dealer-history range filtering
 - empty history windows for valid dealers versus 404 for unknown dealers
 - strict month-format validation and reversed-range handling
+
+### Continuous integration
+
+GitHub Actions (`.github/workflows/ci.yml`) runs on every push and pull request and can also be started manually. On a fresh `ubuntu-24.04` runner it installs Python 3.12.7 and `requirements-dev.txt`, starts a `postgres:18.6` service container, builds the database from `sql/01_schema.sql`, `sql/02_load.sql` and `sql/03_views.sql` (the loader reads the CSV files committed in `data/`), then runs Black, Ruff and the full pytest suite. The Ubuntu release, PostgreSQL version and Python version are pinned to reduce environment drift. Black and Ruff check `src/db.py`, `src/api.py`, `src/models.py` and `tests`; the old Day 1-4 scripts are not linted in CI.
 
 ## Definitions
 
