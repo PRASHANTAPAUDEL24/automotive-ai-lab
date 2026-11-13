@@ -1,6 +1,6 @@
 # Automotive AI Lab: Project Progress Summary
 
-**Last updated:** 11 Nov 2026 · **Latest code commit:** `aba85b2` (Add dealer performance history endpoint with tests) · **Tests:** 276 passing
+**Last updated:** 13 Nov 2026 · **Latest code commit:** `1e1059f` (Add start and end filters to dealer performance endpoint with tests) · **Tests:** 343 passing
 **Repository:** https://github.com/PRASHANTAPAUDEL24/automotive-ai-lab
 **Author:** Prashanta Paudel
 
@@ -25,12 +25,12 @@ The project builds a data and analytics foundation for AI-powered automotive dea
 | `GET /regions/summary` | One row per region: dealer count and counts of sales-risk, inventory-risk, combined-risk and early-overstock-watch dealers |
 | `GET /dealers/at-risk` | The 20 sales-risk or inventory-risk dealers, ranked (1 = most urgent). Optional `limit` (minimum 1) keeps the global ranks; 0 or a non-integer returns 422 |
 | `GET /performance` | Dealer sales and target performance for the required `month` (`YYYY-MM`), 2024-10 to 2026-09. 422 for a malformed month, 404 for a well-formed month with no data. |
-| `GET /dealers/{dealer_id}/performance` | One dealer's sales and target history across all 24 months, oldest first. Unknown id returns 404; non-integer id returns 422. |
+| `GET /dealers/{dealer_id}/performance` | One dealer's sales and target history, oldest first. Optional inclusive `start` and `end` filters use `YYYY-MM`; no bounds returns all 24 months. A valid dealer with no rows in the window returns `[]`; unknown id returns 404; malformed bounds, `start > end`, or a non-integer id return 422. |
 
 - Pydantic response models (`Dealer`: 17 fields, 5 nullable; `RegionSummary`: region plus 5 count fields; `RankedDealer`: `Dealer` plus `rank` and `risk_tier`; `MonthlyPerformance`: 6 fields, 2 nullable) that validate API output and drive the schemas shown in `/docs`.
-- A pytest suite of 276 tests: 33 core database-layer tests, 48 monthly-performance database/query tests, 92 dealer-history database/query tests, 48 existing API-layer tests, and 55 dealer-history API tests, run without starting a server.
+- A pytest suite of 343 tests: 276 tests through Day 19, plus 35 dealer-history range database/query tests and 32 dealer-history range API tests, run without starting a server.
 
-**Next step:** Day 20: add optional `start` and `end` month filters to `GET /dealers/{dealer_id}/performance` while preserving the full-history default. The range will be inclusive; malformed months and `start > end` will return 422, an unknown dealer will remain 404, and a valid dealer with no rows in the requested window will return an empty list.
+**Next step:** Day 21: define the next month-aware FastAPI analysis feature test-first, while keeping historical sales/target analytics separate from the September-specific inventory and risk metrics.
 
 **Architecture**
 
@@ -125,8 +125,9 @@ Flags use unrounded values. Rounding is for display only.
 
 - Sales and target performance are month-aware across SQL, Python and FastAPI through `dealer_monthly_performance`, `GET /performance?month=YYYY-MM` and `GET /dealers/{dealer_id}/performance`, covering October 2024 through September 2026.
 - `inventory_supply`, `dealer_scorecard` and the endpoints built on them (`GET /dealers`, `GET /dealers/{dealer_id}`, `GET /dealers/at-risk` and `GET /regions/summary`) remain fixed to September 2026. Inventory is a single snapshot as of September 30, 2026, so historical inventory and risk analysis is not yet month-aware.
-- `GET /performance` returns all 40 dealers for one month, while `GET /dealers/{dealer_id}/performance` returns one dealer across all 24 months. Dealer-history date-range filtering is not implemented yet.
-- The month format rule exists in two places: the `Query` pattern in `src/api.py` and the regular expression in `src/db.py`; update both if the format changes.
+- `GET /performance` returns all 40 dealers for one month, while `GET /dealers/{dealer_id}/performance` returns one dealer's monthly history with optional inclusive `start` and `end` bounds. Range filtering is month-precision only (`YYYY-MM`); daily or arbitrary-date filtering is not implemented.
+- The strict month-format rule is duplicated across FastAPI `Query` patterns in `src/api.py` and regular-expression validation in `src/db.py`; update both layers together if the format changes.
+- The range filter compares `YYYY-MM` text in SQL. That sorts chronologically only because both bounds are validated first, so the comparison must be revisited if the `month` column ever changes type or format.
 - `get_dealer()` returns `None` for an unknown dealer, while `get_dealer_performance_history()` raises `DealerNotFoundError`. Both behaviors are tested, but the query-layer not-found convention could be standardized later.
 - `get_dealer_performance_history()` relies on FastAPI to enforce an integer `dealer_id`; the database-layer function does not perform its own explicit type validation.
 - The dealer-history CSV cross-check intentionally has its own helper instead of sharing the Day 18 monthly-performance helper. This keeps the validation independent at the cost of a small amount of duplication.
@@ -171,6 +172,10 @@ Flags use unrounded values. Rounding is for display only.
 - **Prove regex traps with a mutation.** `\d` accepts non-ASCII digits and `$` can accept a trailing newline. Changing `[0-9]` to `\d` made the Arabic-Indic digit case fail, and changing `fullmatch` to `match` made three format cases fail, so both guards are tested, not assumed.
 - **A cached dependency can hide an environment test.** `get_engine()` is cached, so deleting `DATABASE_URL` had no effect and the first run returned 200 where 500 was expected. The test has to call `get_engine.cache_clear()` after removing the variable; otherwise it passes or fails depending on which tests ran earlier.
 - **Framework validation is part of the API contract.** Typing `dealer_id` as `int` gives FastAPI's 422 for bad input and keeps oversized numbers from reaching the database as text; changing it to `str` made the non-integer cases and the oversized-id case return 500. `response_model=list[MonthlyPerformance]` stops malformed database output reaching clients. Mutating either one made targeted tests fail.
+- **An empty filtered result is not the same as a missing entity.** A real dealer can legitimately have no rows inside a requested month window, so dealer existence is checked separately only when the filtered history is empty. Mutating the logic in either direction proved both `200 []` and 404 are protected.
+- **Mutation tests should exercise both sides of an ambiguous branch.** Removing the dealer-existence raise proved unknown dealers cannot become empty results; forcing the raise for every empty result produced eight failures and proved valid empty windows cannot become 404s.
+- **Read the staged diff, not just the test results.** While adding the range handler, the Day 18 `/performance` handler was also changed to catch `InvalidMonthRangeError`. No test covers an edit nobody intended, so only `git diff --cached src/api.py` showed it; it was reverted before the commit.
+- **A safety-net handler can hide weakened validation.** The dealer history route has both a `Query` pattern and a handler that return 422, so the status code cannot say which layer rejected the input. Asserting `detail[0]['loc'] == ['query', 'start']` proves the pattern did; removing the anchors from either pattern failed one test each.
 
 ---
 
@@ -214,11 +219,13 @@ Flags use unrounded values. Rounding is for display only.
 
 **Day 19: Dealer-level monthly performance history.** Wrote the database and API tests first, then added `get_dealer_performance_history(dealer_id)` in `src/db.py` and `GET /dealers/{dealer_id}/performance` in `src/api.py`. The query returns all monthly sales and target rows for one dealer, ordered from 2024-10 through 2026-09, and raises the dedicated `DealerNotFoundError` when the dealer has no history. The API reuses the `MonthlyPerformance` response model, translates only `DealerNotFoundError` to HTTP 404 (`Dealer {id} not found`), leaves FastAPI path validation responsible for non-integer ids (422), and keeps unrelated configuration failures such as a missing `DATABASE_URL` as HTTP 500. Tests cover all 40 dealers with 24 months each, independent CSV-to-database equivalence, chronological ordering, exact fields, nullability, unknown dealers (including a very large integer id), non-integer ids, response validation, a missing `DATABASE_URL`, and regression protection for the existing dealer routes. Database mutation checks: removing `ORDER BY month` failed 42 tests; removing the dealer filter failed 89; disabling the empty-result rule failed exactly the six unknown-dealer cases. API mutation checks: catching a bare `ValueError` failed one test (the missing-`DATABASE_URL` case); removing the `DealerNotFoundError` handler failed the six unknown-dealer cases; changing `dealer_id` from `int` to `str` failed four, including the oversized id, which reached the database as text and returned 500; removing `response_model` failed the invalid-response test. The first run of the missing-`DATABASE_URL` test returned 200 instead of 500 because `get_engine()` is cached; clearing the cache in the test fixed it. Suite grew from 129 to 276 tests. Committed as `2dfecdb` (query and tests), `aba85b2` (endpoint and tests) and `f3523ec` (README).
 
+**Day 20: Dealer-history month-range filtering.** Extended `get_dealer_performance_history()` and `GET /dealers/{dealer_id}/performance` with optional inclusive `start` and `end` bounds in strict ASCII `YYYY-MM` format while preserving the Day 19 full-history default. `start` alone runs through the latest month, `end` alone begins at the earliest month, equal bounds return one month, and a valid dealer with no rows in the requested window returns an empty result / HTTP 200 `[]`. Because an empty filtered result no longer means the dealer is unknown, the database layer queries `dealers` only when the range result is empty; an unknown dealer still raises `DealerNotFoundError` and returns 404. Added the dedicated `InvalidMonthRangeError` for `start > end`, while malformed bounds raise `InvalidMonthError`. FastAPI validates the query format first and the dealer-history route also translates database-layer `InvalidMonthError` and `InvalidMonthRangeError` to 422 as a safety net without catching broad `ValueError`. Tests cover full history, one-sided and two-sided ranges, inclusive boundaries, equal bounds, before-data and after-data empty windows, unknown dealers, non-string direct DB inputs, malformed ASCII and Unicode month formats, API validation locations, DB/API equivalence, and the database-layer validation safety net. Database mutations: changing `>=` to `>` on `start` failed 7 tests; changing `<=` to `<` on `end` failed 7; removing the reversed-range guard failed 2; removing the dealer existence check failed 1; forcing every empty result to raise failed 8 across the DB and API range suites; changing `fullmatch` to `match` failed the 2 trailing-newline DB cases. API mutations: removing the `InvalidMonthRangeError` handler failed the 2 reversed-range cases; weakening the `start` or `end` query pattern each failed the corresponding trailing-newline validation-location test; widening the handler to bare `ValueError` failed the missing-`DATABASE_URL` regression test; and removing `InvalidMonthError` from the final safety-net tuple made its targeted test return 500 instead of 422. After the safety net was added, the two weakened-pattern mutations were repeated and still failed on the FastAPI validation-location assertion, proving a DB-generated 422 cannot hide API regex drift. Suite grew from 276 to 343 tests. Committed as `c3731d9` (database range query and tests), `1e1059f` (API range filters and tests), and `1ea6c07` (README).
+
 ---
 
 ## 9. Roadmap
 
-**Next:** optional `start` and `end` month filters on the dealer history endpoint (Day 20), keeping historical sales and target analytics separate from the September-specific inventory and risk metrics.
+**Next:** define the next month-aware FastAPI analysis feature (Day 21), keeping historical sales and target analytics separate from the September-specific inventory and risk metrics.
 
 **Then:**
 
