@@ -10,6 +10,7 @@ from db import (
     DealerNotFoundError,
     InvalidFilterError,
     InvalidMonthError,
+    InvalidMonthRangeError,
     MonthNotFoundError,
     get_at_risk_dealers,
     get_dealer,
@@ -52,19 +53,38 @@ def dealers(region: str | None = None, risk: str | None = None):
     "/dealers/{dealer_id}/performance",
     response_model=list[MonthlyPerformance],
 )
-def dealer_performance_history(dealer_id: int):
+def dealer_performance_history(
+    dealer_id: int,
+    start: str | None = Query(
+        default=None,
+        pattern=r"^[0-9]{4}-(0[1-9]|1[0-2])$",
+    ),
+    end: str | None = Query(
+        default=None,
+        pattern=r"^[0-9]{4}-(0[1-9]|1[0-2])$",
+    ),
+):
     """
-    Return the complete monthly sales and target history for one dealer.
+    Return monthly sales and target history for one dealer.
 
-    Unknown dealers return 404. Path validation for dealer_id is handled
-    by FastAPI before this function runs.
+    Optional start and end bounds are inclusive. Unknown dealers return 404,
+    malformed query bounds return 422 through FastAPI validation, and a
+    reversed range returns 422.
     """
-
     try:
-        history = get_dealer_performance_history(dealer_id)
+        history = get_dealer_performance_history(
+            dealer_id,
+            start=start,
+            end=end,
+        )
     except DealerNotFoundError as error:
         raise HTTPException(
             status_code=404,
+            detail=str(error),
+        ) from error
+    except (InvalidMonthError, InvalidMonthRangeError) as error:
+        raise HTTPException(
+            status_code=422,
             detail=str(error),
         ) from error
 

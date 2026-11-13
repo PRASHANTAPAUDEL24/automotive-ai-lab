@@ -188,7 +188,7 @@ def test_dealer_performance_history_allows_null_fields(
     monkeypatch.setattr(
         api,
         "get_dealer_performance_history",
-        lambda dealer_id: history,
+        lambda dealer_id, start=None, end=None: history,
     )
 
     response = client.get("/dealers/101/performance")
@@ -228,7 +228,7 @@ def test_dealer_performance_history_invalid_response_returns_500(
     monkeypatch.setattr(
         api,
         "get_dealer_performance_history",
-        lambda dealer_id: history,
+        lambda dealer_id, start=None, end=None: history,
     )
 
     response = client.get("/dealers/101/performance")
