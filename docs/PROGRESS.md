@@ -1,6 +1,6 @@
 # Automotive AI Lab: Project Progress Summary
 
-**Last updated:** 13 Nov 2026 · **Latest code commit:** `1e1059f` (Add start and end filters to dealer performance endpoint with tests) · **Tests:** 343 passing
+**Last updated:** 13 Nov 2026 · **Latest code commit:** `93ba0b0` (Pin CI runner to ubuntu-24.04) · **Tests:** 343 passing · **CI:** passing on `main`
 **Repository:** https://github.com/PRASHANTAPAUDEL24/automotive-ai-lab
 **Author:** Prashanta Paudel
 
@@ -29,8 +29,9 @@ The project builds a data and analytics foundation for AI-powered automotive dea
 
 - Pydantic response models (`Dealer`: 17 fields, 5 nullable; `RegionSummary`: region plus 5 count fields; `RankedDealer`: `Dealer` plus `rank` and `risk_tier`; `MonthlyPerformance`: 6 fields, 2 nullable) that validate API output and drive the schemas shown in `/docs`.
 - A pytest suite of 343 tests: 276 tests through Day 19, plus 35 dealer-history range database/query tests and 32 dealer-history range API tests, run without starting a server.
+- GitHub Actions CI on every push and pull request: a fresh `ubuntu-24.04` runner with a `postgres:18.6` service rebuilds the database from the SQL scripts, then runs Black, Ruff and the full test suite.
 
-**Next step:** Day 21: define the next month-aware FastAPI analysis feature test-first, while keeping historical sales/target analytics separate from the September-specific inventory and risk metrics.
+**Next step:** Day 22: add a regional or network-wide monthly trend endpoint (units, target and achievement per month), test-first, while keeping historical sales/target analytics separate from the September-specific inventory and risk metrics.
 
 **Architecture**
 
@@ -43,7 +44,7 @@ Synthetic CSV data
   -> pytest integration tests
 ```
 
-**Technical stack:** Python, pandas, NumPy, PostgreSQL, SQL, SQLAlchemy, psycopg, FastAPI, Uvicorn, pytest, FastAPI TestClient, Git, virtual environments, Black, Ruff.
+**Technical stack:** Python, pandas, NumPy, PostgreSQL, SQL, SQLAlchemy, psycopg, FastAPI, Uvicorn, pytest, FastAPI TestClient, Git, virtual environments, Black, Ruff, GitHub Actions.
 
 ---
 
@@ -134,8 +135,8 @@ Flags use unrounded values. Rounding is for display only.
 - Database-backed tests depend on `DATABASE_URL` being exported in the current shell. Because `get_engine()` is cached, tests that deliberately remove the variable must clear the engine cache before exercising that path.
 - The current dataset has no zero-sales or missing-target dealer-months, so the zero-fill and `NULL`-achievement paths of the monthly view were checked once with a rolled-back test transaction, not by an automated test.
 - Direct dependencies are pinned in `requirements.txt` and `requirements-dev.txt`, but transitive packages (for example Starlette) are not locked.
-- The Day 16 clean-clone test validated a fresh Python environment against the existing local PostgreSQL database; it did not rebuild PostgreSQL from scratch.
-- No CI pipeline yet; tests run locally.
+- The Day 16 clean-clone test reused the existing local PostgreSQL database; since Day 21 the CI workflow rebuilds the database from the SQL scripts on a fresh runner on every push.
+- CI covers one pinned environment (`ubuntu-24.04`, Python 3.12.7, PostgreSQL 18.6) and lints only `src/db.py`, `src/api.py`, `src/models.py` and `tests`; other versions and the old Day 1-4 scripts are not covered. The Ubuntu release, `postgres:18.6` tag and action versions are pinned by hand and must be updated deliberately, although GitHub still updates the contents of the `ubuntu-24.04` image over time. Branch protection is not configured, so a red run does not block a merge, and the job has no `timeout-minutes` yet.
 - `/health` has no response model, so `/docs` shows a generic example for it.
 - The region summary query exists both in `sql/day14_region_summary.sql` and in `src/db.py`; update both if the logic changes.
 - The at-risk ranking query exists both in `sql/day15_at_risk_dealers.sql` and in `src/db.py`; update both if the logic changes.
@@ -176,6 +177,9 @@ Flags use unrounded values. Rounding is for display only.
 - **Mutation tests should exercise both sides of an ambiguous branch.** Removing the dealer-existence raise proved unknown dealers cannot become empty results; forcing the raise for every empty result produced eight failures and proved valid empty windows cannot become 404s.
 - **Read the staged diff, not just the test results.** While adding the range handler, the Day 18 `/performance` handler was also changed to catch `InvalidMonthRangeError`. No test covers an edit nobody intended, so only `git diff --cached src/api.py` showed it; it was reverted before the commit.
 - **A safety-net handler can hide weakened validation.** The dealer history route has both a `Query` pattern and a handler that return 422, so the status code cannot say which layer rejected the input. Asserting `detail[0]['loc'] == ['query', 'start']` proves the pattern did; removing the anchors from either pattern failed one test each.
+- **A floating label is a hidden dependency.** The first CI run failed after 24 seconds: the runner reported that Python 3.12.7 (x64) was not found for Ubuntu 26.04, and GitHub's notice on the same run said the `ubuntu-latest` label would migrate to a newer Ubuntu release. Pinning `runs-on: ubuntu-24.04`, `postgres:18.6` and Python 3.12.7 reduces environment drift, so a newer image or patch release is adopted deliberately rather than by surprise; GitHub still updates the contents of the `ubuntu-24.04` image over time.
+- **A local rehearsal cannot catch runner differences.** A fresh clone, a fresh virtual environment and a scratch database rebuilt from the SQL scripts passed all 343 tests on the Mac, yet the first CI run still failed because the runner's operating system differed. Rehearse locally to remove your own mistakes, expect the platform to reveal the rest, and iterate on a branch so `main` never shows a red run.
+- **Read the real status, not a stale page.** A signed-out Actions page kept showing a run as in progress for over five minutes after it had finished green in 54 seconds, which led to a wrong first guess about a slow install. Reload, sign in, and check the step list and annotations before drawing conclusions.
 
 ---
 
@@ -221,17 +225,19 @@ Flags use unrounded values. Rounding is for display only.
 
 **Day 20: Dealer-history month-range filtering.** Extended `get_dealer_performance_history()` and `GET /dealers/{dealer_id}/performance` with optional inclusive `start` and `end` bounds in strict ASCII `YYYY-MM` format while preserving the Day 19 full-history default. `start` alone runs through the latest month, `end` alone begins at the earliest month, equal bounds return one month, and a valid dealer with no rows in the requested window returns an empty result / HTTP 200 `[]`. Because an empty filtered result no longer means the dealer is unknown, the database layer queries `dealers` only when the range result is empty; an unknown dealer still raises `DealerNotFoundError` and returns 404. Added the dedicated `InvalidMonthRangeError` for `start > end`, while malformed bounds raise `InvalidMonthError`. FastAPI validates the query format first and the dealer-history route also translates database-layer `InvalidMonthError` and `InvalidMonthRangeError` to 422 as a safety net without catching broad `ValueError`. Tests cover full history, one-sided and two-sided ranges, inclusive boundaries, equal bounds, before-data and after-data empty windows, unknown dealers, non-string direct DB inputs, malformed ASCII and Unicode month formats, API validation locations, DB/API equivalence, and the database-layer validation safety net. Database mutations: changing `>=` to `>` on `start` failed 7 tests; changing `<=` to `<` on `end` failed 7; removing the reversed-range guard failed 2; removing the dealer existence check failed 1; forcing every empty result to raise failed 8 across the DB and API range suites; changing `fullmatch` to `match` failed the 2 trailing-newline DB cases. API mutations: removing the `InvalidMonthRangeError` handler failed the 2 reversed-range cases; weakening the `start` or `end` query pattern each failed the corresponding trailing-newline validation-location test; widening the handler to bare `ValueError` failed the missing-`DATABASE_URL` regression test; and removing `InvalidMonthError` from the final safety-net tuple made its targeted test return 500 instead of 422. After the safety net was added, the two weakened-pattern mutations were repeated and still failed on the FastAPI validation-location assertion, proving a DB-generated 422 cannot hide API regex drift. Suite grew from 276 to 343 tests. Committed as `c3731d9` (database range query and tests), `1e1059f` (API range filters and tests), and `1ea6c07` (README).
 
+**Day 21: Continuous integration with GitHub Actions.** Inspected the project for environment assumptions before writing the workflow: `src/db.py` reads only `DATABASE_URL` and passes it to `create_engine`; the three SQL scripts contain no absolute paths, roles or owners; the loader uses relative `data/` paths, and all seven CSV files are committed. Rehearsed locally first: built a scratch database from the three scripts with `ON_ERROR_STOP=1` (loader rows 40 / 8 / 7,680 / 960 / 960 / 4,041; 960 dealer-month rows) and ran the suite against it (343 passed), then repeated the run from a fresh `git clone` with a new virtual environment installed from `requirements-dev.txt` (343 passed). Added `.github/workflows/ci.yml` on branch `ci-day21`: triggers on `push`, `pull_request` and manual dispatch with read-only `contents` permission; a `postgres:18.6` service container with a health check; `actions/checkout@v7` and `actions/setup-python@v7` with Python 3.12.7 and pip caching; install from `requirements-dev.txt`; database build from the three SQL scripts with `ON_ERROR_STOP=1`; `black --check` and `ruff check` on `src/db.py`, `src/api.py`, `src/models.py` and `tests`; then `python -m pytest -q`. CI #1 (`086b7fe`, runner `ubuntu-latest`) failed in 24 seconds in the Python setup step: the annotation read 'The version 3.12.7 with architecture x64 was not found for Ubuntu 26.04', and GitHub's notice on the same run said the `ubuntu-latest` label would migrate to Ubuntu 26 beginning 19 October 2026. Pinning `runs-on: ubuntu-24.04` (`93ba0b0`) fixed it: CI #2 on the branch passed every step in 54 seconds, and after a fast-forward merge CI #3 on `main` passed in 1 minute 45 seconds. A signed-out Actions page briefly showed the green run as still in progress, which led to a wrong first guess about a slow install; the step list showed install taking 16 seconds. Committed as `086b7fe` (workflow) and `93ba0b0` (runner pin) on `ci-day21`, fast-forwarded to `main`; the README badge and CI section followed in a separate documentation commit.
+
 ---
 
 ## 9. Roadmap
 
-**Next:** define the next month-aware FastAPI analysis feature (Day 21), keeping historical sales and target analytics separate from the September-specific inventory and risk metrics.
+**Next:** a regional or network-wide monthly trend endpoint (Day 22), then centralizing the duplicated month-format rule now that CI protects the refactor (Day 23), keeping historical sales and target analytics separate from the September-specific inventory and risk metrics.
 
 **Then:**
 
 - Richer FastAPI endpoints
 - Additional sales and inventory queries, with more automated API tests
-- CI that runs the tests on every push, and a full lock file for transitive dependencies
+- A full lock file for transitive dependencies, and `timeout-minutes` plus branch protection for CI
 - LLM APIs and retrieval-augmented generation (RAG)
 - Dealer operations copilot and supply-chain risk assistant
 - AI agents
