@@ -50,6 +50,7 @@ The dataset includes:
 - [x] Day 17: Monthly dealer performance SQL view across 24 months, with September compatibility preserved
 - [x] Day 18: Month-aware Python query and FastAPI endpoint (`GET /performance?month=YYYY-MM`) with validation, response model, and tests
 - [x] Day 19: Dealer monthly performance history (`GET /dealers/{dealer_id}/performance`) with query, dedicated 404 handling, response validation, and tests
+- [x] Day 20: Optional inclusive `start` and `end` month filters for `GET /dealers/{dealer_id}/performance`, with empty-window handling, validation, and tests
 - [ ] Week 3: FastAPI
 - [ ] Week 4: Automotive Dealer Analytics API
 - [ ] Later: LLM APIs, RAG, agents, Docker, Azure
@@ -162,7 +163,7 @@ Interactive documentation is available at http://127.0.0.1:8000/docs.
 | `GET /regions/summary` | Returns one row per region, ordered by region: dealer count and the number of sales-risk, inventory-risk, combined-risk and early-overstock-watch dealers |
 | `GET /dealers/at-risk` | Returns the 20 sales-risk or inventory-risk dealers, ranked from most to least urgent. Optional `limit` (minimum 1) keeps the global ranks; `limit=0` or a non-integer returns 422 |
 | `GET /performance` | Returns dealer sales and target performance for the required `month` (`YYYY-MM`), for any month from 2024-10 to 2026-09. A malformed month returns 422, a well-formed month with no data returns 404, and target and achievement stay nullable. |
-| `GET /dealers/{dealer_id}/performance` | Returns the complete monthly sales and target history for one dealer: 24 rows from 2024-10 to 2026-09, oldest first. An unknown dealer id returns HTTP 404. A non-integer id returns HTTP 422. |
+| `GET /dealers/{dealer_id}/performance` | Returns one dealer's monthly sales and target history, oldest first. Optional `start` and `end` parameters use `YYYY-MM` and are inclusive. With no bounds, all 24 months are returned. An unknown dealer returns 404; malformed bounds, `start > end`, or a non-integer dealer id return 422. A valid dealer with no rows in the requested window returns `200 []`. |
 
 Example:
 
@@ -192,7 +193,7 @@ If the data layer ever returns a value that does not match the model, the API re
 
 `GET /performance?month=YYYY-MM` returns `MonthlyPerformance` records with six fields: `dealer_id`, `dealer_name`, `month`, `units_sold`, `target_units` and `achievement_pct`. The month is required and must match `YYYY-MM`. Malformed values return 422, while a well-formed month with no data returns 404. `target_units` is null when the dealer has no target row for the month; `achievement_pct` is null when the target is missing or zero (a zero target is returned as `0`). The response is ordered by `dealer_id`.
 
-`GET /dealers/{dealer_id}/performance` returns the same `MonthlyPerformance` records for one dealer: 24 months, ordered oldest first, with the same nullable `target_units` and `achievement_pct`. An unknown dealer id returns 404 (for example `Dealer 999 not found`) and a non-integer id returns 422. It always returns the full history; there is no date-range filter yet.
+`GET /dealers/{dealer_id}/performance` returns the same `MonthlyPerformance` records for one dealer, ordered oldest first, with the same nullable `target_units` and `achievement_pct`. Optional `start` and `end` query parameters use strict `YYYY-MM` format and are inclusive. With neither bound, all 24 months are returned; `start` alone runs through the latest month, `end` alone begins at the earliest month, and equal bounds return one month. A valid dealer with no rows in the requested window returns `200 []`. An unknown dealer returns 404 (for example `Dealer 999 not found`), while malformed bounds, `start > end`, and a non-integer dealer id return 422.
 
 ## Testing
 
@@ -228,6 +229,10 @@ The current test suite covers:
 - invalid data from the data layer returns HTTP 500
 - region summary counts for every region, plus network totals
 - ranked at-risk list: tier counts, continuous ranks, within-tier ordering, anchor positions and `limit` handling
+- dealer monthly history across all 24 months
+- inclusive `start` and `end` dealer-history range filtering
+- empty history windows for valid dealers versus 404 for unknown dealers
+- strict month-format validation and reversed-range handling
 
 ## Definitions
 
@@ -271,9 +276,9 @@ The cross-check is now automated: `tests/test_monthly_performance.py` recomputes
 - All data is synthetic, so the findings demonstrate the analytical method, not real-world conclusions.
 - Months of supply currently uses September sales only.
 - The 80%, 90-day, 4-month, and 30% thresholds are business-rule assumptions and should be validated and tuned with stakeholders in a real deployment.
-- Sales and target performance are available through SQL, the Python query layer, `GET /performance?month=YYYY-MM` (all dealers for one month) and `GET /dealers/{dealer_id}/performance` (one dealer across all months), covering the 24 months from October 2024 through September 2026.
+- Sales and target performance are available through SQL, the Python query layer, `GET /performance?month=YYYY-MM` (all dealers for one month) and `GET /dealers/{dealer_id}/performance` (one dealer's monthly history, optionally limited by `start` and `end`), covering the 24 months from October 2024 through September 2026.
 - `inventory_supply`, `dealer_scorecard` and the endpoints built on them (`GET /dealers`, `GET /dealers/{dealer_id}`, `GET /dealers/at-risk` and `GET /regions/summary`) remain fixed to September 2026. Inventory is a single snapshot as of September 30, 2026, so historical inventory and risk analysis is not yet month-aware.
-- Dealer history returns all 24 months; there is no date-range filter yet.
+- Dealer-history range filters are limited to month precision (`YYYY-MM`); daily or arbitrary-date filtering is not implemented.
 - The at-risk ranking order (risk tier, then months of supply) is a prioritization heuristic, not a validated predictive metric. Within the sales-risk-only tier, months of supply is a weak signal because all of those dealers are under 3.2 months.
 
 ## Planned Projects
