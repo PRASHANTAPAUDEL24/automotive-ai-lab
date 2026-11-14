@@ -33,6 +33,10 @@ class InvalidMonthRangeError(ValueError):
     """Raised when the requested month range is invalid."""
 
 
+class RegionNotFoundError(ValueError):
+    """Raised when a requested region does not exist."""
+
+
 ALLOWED_RISKS = {
     "sales_risk",
     "inventory_risk",
@@ -363,5 +367,91 @@ def get_dealer_performance_history(
 
         if dealer_exists.empty:
             raise DealerNotFoundError(f"Dealer {dealer_id} not found")
+
+    return history
+
+
+def get_region_performance_history(
+    region,
+    start=None,
+    end=None,
+):
+    """
+    Return monthly sales and target performance for one region.
+
+    Optional start and end bounds use strict YYYY-MM format and are
+    inclusive. Regional achievement is calculated from total units divided
+    by total target, not by averaging dealer achievement percentages.
+
+    Raises RegionNotFoundError when the region does not exist.
+    Raises InvalidMonthError for malformed month bounds.
+    Raises InvalidMonthRangeError when start is after end.
+    """
+    _validate_optional_month(start, "start")
+    _validate_optional_month(end, "end")
+
+    if start is not None and end is not None and start > end:
+        raise InvalidMonthRangeError("start month must not be after end month")
+
+    clauses = ["d.region = :region"]
+    params = {"region": region}
+
+    if start is not None:
+        clauses.append("dmp.month >= :start")
+        params["start"] = start
+
+    if end is not None:
+        clauses.append("dmp.month <= :end")
+        params["end"] = end
+
+    # Only fixed SQL fragments are joined here; user values stay bound parameters.
+    query = text(f"""
+        SELECT
+            d.region,
+            dmp.month,
+            COUNT(*) AS dealer_count,
+            CAST(SUM(dmp.units_sold) AS bigint) AS units_sold,
+            CASE
+                WHEN COUNT(dmp.target_units) < COUNT(*)
+                THEN NULL
+                ELSE SUM(dmp.target_units)
+            END AS target_units,
+            CASE
+                WHEN COUNT(dmp.target_units) < COUNT(*)
+                    OR SUM(dmp.target_units) = 0
+                THEN NULL
+                ELSE SUM(dmp.units_sold) * 100.0
+                    / SUM(dmp.target_units)
+            END AS achievement_pct
+        FROM dealer_monthly_performance dmp
+        JOIN dealers d
+            ON d.dealer_id = dmp.dealer_id
+        WHERE {" AND ".join(clauses)}
+        GROUP BY
+            d.region,
+            dmp.month
+        ORDER BY dmp.month
+        """)
+
+    history = pd.read_sql(
+        query,
+        get_engine(),
+        params=params,
+    )
+
+    if history.empty:
+        region_exists = pd.read_sql(
+            text("""
+                SELECT 1
+                FROM dealers
+                WHERE region = :region
+                LIMIT 1
+                """),
+            get_engine(),
+            params={"region": region},
+        )
+
+        if region_exists.empty:
+            raise RegionNotFoundError(f"Region {region} not found")
 
     return history
