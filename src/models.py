@@ -92,3 +92,25 @@ class MonthlyPerformance(BaseModel):
     achievement_pct: float | None = Field(
         description="Sales achievement versus target. Null when the target is missing or zero."
     )
+
+
+class RegionMonthlyPerformance(BaseModel):
+    """Aggregated sales and target performance for one region and month."""
+
+    region: str
+    month: str
+    dealer_count: int
+    units_sold: int
+    target_units: int | None = Field(
+        description=(
+            "Regional monthly target units. Null when any contributing "
+            "dealer has no target."
+        )
+    )
+    achievement_pct: float | None = Field(
+        description=(
+            "Regional sales achievement based on total units divided by "
+            "total target. Null when a target is missing or the total target "
+            "is zero."
+        )
+    )

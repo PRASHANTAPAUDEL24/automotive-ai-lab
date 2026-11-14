@@ -12,15 +12,23 @@ from db import (
     InvalidMonthError,
     InvalidMonthRangeError,
     MonthNotFoundError,
+    RegionNotFoundError,
     get_at_risk_dealers,
     get_dealer,
     get_dealer_performance_history,
     get_monthly_performance,
+    get_region_performance_history,
     get_region_summary,
     get_scorecard,
     to_records,
 )
-from models import Dealer, MonthlyPerformance, RankedDealer, RegionSummary
+from models import (
+    Dealer,
+    MonthlyPerformance,
+    RankedDealer,
+    RegionMonthlyPerformance,
+    RegionSummary,
+)
 
 app = FastAPI(
     title="Automotive Dealer Analytics API",
@@ -116,6 +124,49 @@ def dealer_by_id(dealer_id: int):
 def region_summary():
     summary = get_region_summary()
     return to_records(summary)
+
+
+@app.get(
+    "/regions/{region}/performance",
+    response_model=list[RegionMonthlyPerformance],
+)
+def region_performance_history(
+    region: str,
+    start: str | None = Query(
+        default=None,
+        pattern=r"^[0-9]{4}-(0[1-9]|1[0-2])$",
+    ),
+    end: str | None = Query(
+        default=None,
+        pattern=r"^[0-9]{4}-(0[1-9]|1[0-2])$",
+    ),
+):
+    """
+    Return monthly sales and target performance for one region.
+
+    Optional start and end bounds are inclusive. Region names are exact and
+    case-sensitive. Unknown regions return 404, while a real region with no
+    rows in the requested window returns an empty list. Malformed query bounds
+    return 422 through FastAPI validation, and a reversed range returns 422.
+    """
+    try:
+        history = get_region_performance_history(
+            region,
+            start=start,
+            end=end,
+        )
+    except RegionNotFoundError as error:
+        raise HTTPException(
+            status_code=404,
+            detail=str(error),
+        ) from error
+    except (InvalidMonthError, InvalidMonthRangeError) as error:
+        raise HTTPException(
+            status_code=422,
+            detail=str(error),
+        ) from error
+
+    return to_records(history)
 
 
 @app.get("/performance", response_model=list[MonthlyPerformance])
