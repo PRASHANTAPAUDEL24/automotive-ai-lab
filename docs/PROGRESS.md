@@ -1,6 +1,6 @@
 # Automotive AI Lab: Project Progress Summary
 
-**Last updated:** 13 Nov 2026 · **Latest code commit:** `93ba0b0` (Pin CI runner to ubuntu-24.04) · **Tests:** 343 passing · **CI:** passing on `main`
+**Last updated:** 15 Nov 2026 · **Latest code commit:** `0cbf7a6` (Add regional performance history endpoint with tests) · **Tests:** 458 passing · **CI:** passing on `main`
 **Repository:** https://github.com/PRASHANTAPAUDEL24/automotive-ai-lab
 **Author:** Prashanta Paudel
 
@@ -15,7 +15,7 @@ The project builds a data and analytics foundation for AI-powered automotive dea
 - Dealer sales and inventory analytics, implemented twice (pandas and PostgreSQL) and cross-checked against each other.
 - Four reusable PostgreSQL views, from a monthly `dealer_monthly_performance` view to a `dealer_scorecard` view with four business-risk flags.
 - A safe, parameterized Python query layer (`src/db.py`).
-- A FastAPI service with seven endpoints:
+- A FastAPI service with eight endpoints:
 
 | Endpoint | Behaviour |
 |---|---|
@@ -26,12 +26,13 @@ The project builds a data and analytics foundation for AI-powered automotive dea
 | `GET /dealers/at-risk` | The 20 sales-risk or inventory-risk dealers, ranked (1 = most urgent). Optional `limit` (minimum 1) keeps the global ranks; 0 or a non-integer returns 422 |
 | `GET /performance` | Dealer sales and target performance for the required `month` (`YYYY-MM`), 2024-10 to 2026-09. 422 for a malformed month, 404 for a well-formed month with no data. |
 | `GET /dealers/{dealer_id}/performance` | One dealer's sales and target history, oldest first. Optional inclusive `start` and `end` filters use `YYYY-MM`; no bounds returns all 24 months. A valid dealer with no rows in the window returns `[]`; unknown id returns 404; malformed bounds, `start > end`, or a non-integer id return 422. |
+| `GET /regions/{region}/performance` | One region's monthly sales and target history, oldest first. `achievement_pct` is weighted from total units divided by total target. Region names are exact and case-sensitive. Optional inclusive `start` and `end` filters use strict `YYYY-MM`; no bounds returns all 24 months. A valid region with no rows in the window returns `[]`; an unknown region returns 404; malformed or reversed bounds return 422. |
 
-- Pydantic response models (`Dealer`: 17 fields, 5 nullable; `RegionSummary`: region plus 5 count fields; `RankedDealer`: `Dealer` plus `rank` and `risk_tier`; `MonthlyPerformance`: 6 fields, 2 nullable) that validate API output and drive the schemas shown in `/docs`.
-- A pytest suite of 343 tests: 276 tests through Day 19, plus 35 dealer-history range database/query tests and 32 dealer-history range API tests, run without starting a server.
+- Pydantic response models (`Dealer`: 17 fields, 5 nullable; `RegionSummary`: region plus 5 count fields; `RankedDealer`: `Dealer` plus `rank` and `risk_tier`; `MonthlyPerformance`: 6 fields, 2 nullable; `RegionMonthlyPerformance`: 6 fields, 2 nullable) that validate API output and drive the schemas shown in `/docs`.
+- A pytest suite of 458 tests: 343 tests through Day 21, plus 76 regional-performance database/query tests and 39 regional-performance API tests, run without starting a server.
 - GitHub Actions CI on every push and pull request: a fresh `ubuntu-24.04` runner with a `postgres:18.6` service rebuilds the database from the SQL scripts, then runs Black, Ruff and the full test suite.
 
-**Next step:** Day 22: add a regional or network-wide monthly trend endpoint (units, target and achievement per month), test-first, while keeping historical sales/target analytics separate from the September-specific inventory and risk metrics.
+**Next step:** Day 23: centralize the duplicated strict ASCII `YYYY-MM` validation rule across the database and FastAPI layers without changing the existing month, dealer-history or regional-history contracts.
 
 **Architecture**
 
@@ -124,10 +125,13 @@ Flags use unrounded values. Rounding is for display only.
 
 ## 6. Known limitations
 
-- Sales and target performance are month-aware across SQL, Python and FastAPI through `dealer_monthly_performance`, `GET /performance?month=YYYY-MM` and `GET /dealers/{dealer_id}/performance`, covering October 2024 through September 2026.
+- Sales and target performance are month-aware across SQL, Python and FastAPI through `dealer_monthly_performance`, `GET /performance?month=YYYY-MM`, `GET /dealers/{dealer_id}/performance` and `GET /regions/{region}/performance`, covering October 2024 through September 2026.
 - `inventory_supply`, `dealer_scorecard` and the endpoints built on them (`GET /dealers`, `GET /dealers/{dealer_id}`, `GET /dealers/at-risk` and `GET /regions/summary`) remain fixed to September 2026. Inventory is a single snapshot as of September 30, 2026, so historical inventory and risk analysis is not yet month-aware.
-- `GET /performance` returns all 40 dealers for one month, while `GET /dealers/{dealer_id}/performance` returns one dealer's monthly history with optional inclusive `start` and `end` bounds. Range filtering is month-precision only (`YYYY-MM`); daily or arbitrary-date filtering is not implemented.
-- The strict month-format rule is duplicated across FastAPI `Query` patterns in `src/api.py` and regular-expression validation in `src/db.py`; update both layers together if the format changes.
+- `GET /performance` returns all 40 dealers for one month, `GET /dealers/{dealer_id}/performance` returns one dealer's monthly history, and `GET /regions/{region}/performance` returns weighted regional monthly history. Dealer and regional history accept optional inclusive `start` and `end` bounds. Range filtering is month-precision only (`YYYY-MM`); daily or arbitrary-date filtering is not implemented.
+- The strict ASCII `YYYY-MM` rule is duplicated across FastAPI `Query` patterns in `src/api.py` and regular-expression validation paths in `src/db.py`; Day 23 will centralize the rule without changing behavior. Until then, update both layers together if the format changes.
+- Regional aggregation currently lives inline in `get_region_performance_history()` in `src/db.py`. That is appropriate while it has one consumer; if another feature needs the same weighted regional definition, extracting a reusable SQL view would reduce duplication behind the existing tested interface.
+- Region matching is exact and case-sensitive. An unknown region returns 404 on `GET /regions/{region}/performance`, while `GET /dealers?region=` returns an empty list for an unknown region. Both behaviors are tested, but the convention is not unified.
+- The regional NULL and zero-target rules are covered by automated tests that run the real query inside a rolled-back transaction (one deleted Midwest target, and one Midwest region-month with all targets set to zero), but the committed dataset has no such rows. API-level null serialization is tested with a stubbed data layer.
 - The range filter compares `YYYY-MM` text in SQL. That sorts chronologically only because both bounds are validated first, so the comparison must be revisited if the `month` column ever changes type or format.
 - `get_dealer()` returns `None` for an unknown dealer, while `get_dealer_performance_history()` raises `DealerNotFoundError`. Both behaviors are tested, but the query-layer not-found convention could be standardized later.
 - `get_dealer_performance_history()` relies on FastAPI to enforce an integer `dealer_id`; the database-layer function does not perform its own explicit type validation.
@@ -136,7 +140,7 @@ Flags use unrounded values. Rounding is for display only.
 - The current dataset has no zero-sales or missing-target dealer-months, so the zero-fill and `NULL`-achievement paths of the monthly view were checked once with a rolled-back test transaction, not by an automated test.
 - Direct dependencies are pinned in `requirements.txt` and `requirements-dev.txt`, but transitive packages (for example Starlette) are not locked.
 - The Day 16 clean-clone test reused the existing local PostgreSQL database; since Day 21 the CI workflow rebuilds the database from the SQL scripts on a fresh runner on every push.
-- CI covers one pinned environment (`ubuntu-24.04`, Python 3.12.7, PostgreSQL 18.6) and lints only `src/db.py`, `src/api.py`, `src/models.py` and `tests`; other versions and the old Day 1-4 scripts are not covered. The Ubuntu release, `postgres:18.6` tag and action versions are pinned by hand and must be updated deliberately, although GitHub still updates the contents of the `ubuntu-24.04` image over time. Branch protection is not configured, so a red run does not block a merge, and the job has no `timeout-minutes` yet.
+- CI covers one pinned environment (`ubuntu-24.04`, Python 3.12.7, PostgreSQL 18.6) and lints only `src/db.py`, `src/api.py`, `src/models.py` and `tests`; other versions and the old Day 1-4 scripts are not covered. The Ubuntu release, `postgres:18.6` tag and action versions are pinned by hand and must be updated deliberately, although GitHub still updates the contents of the `ubuntu-24.04` image over time. The job has a 15-minute timeout, but branch protection is not configured, so a red run does not block a merge.
 - `/health` has no response model, so `/docs` shows a generic example for it.
 - The region summary query exists both in `sql/day14_region_summary.sql` and in `src/db.py`; update both if the logic changes.
 - The at-risk ranking query exists both in `sql/day15_at_risk_dealers.sql` and in `src/db.py`; update both if the logic changes.
@@ -180,6 +184,10 @@ Flags use unrounded values. Rounding is for display only.
 - **A floating label is a hidden dependency.** The first CI run failed after 24 seconds: the runner reported that Python 3.12.7 (x64) was not found for Ubuntu 26.04, and GitHub's notice on the same run said the `ubuntu-latest` label would migrate to a newer Ubuntu release. Pinning `runs-on: ubuntu-24.04`, `postgres:18.6` and Python 3.12.7 reduces environment drift, so a newer image or patch release is adopted deliberately rather than by surprise; GitHub still updates the contents of the `ubuntu-24.04` image over time.
 - **A local rehearsal cannot catch runner differences.** A fresh clone, a fresh virtual environment and a scratch database rebuilt from the SQL scripts passed all 343 tests on the Mac, yet the first CI run still failed because the runner's operating system differed. Rehearse locally to remove your own mistakes, expect the platform to reveal the rest, and iterate on a branch so `main` never shows a red run.
 - **Read the real status, not a stale page.** A signed-out Actions page kept showing a run as in progress for over five minutes after it had finished green in 54 seconds, which led to a wrong first guess about a slow install. Reload, sign in, and check the step list and annotations before drawing conclusions.
+- **A PostgreSQL aggregate can change a column's type.** The monthly `dealer_monthly_performance.units_sold` value was verified with `pg_typeof` as `bigint`; summing it again for the regional aggregation yields PostgreSQL `numeric`, which initially surfaced as `211.0` instead of `211`. Casting the regional `SUM(units_sold)` back to `bigint` preserves the integer API contract at the SQL source instead of hiding the type change in Python.
+- **Test a real query against states the dataset does not contain.** The committed data has no missing or zero targets. Opening a connection, starting a transaction, changing the rows, pointing `get_engine` at that connection with `monkeypatch`, calling the real function and rolling back exercised the NULL and zero-target rules for real, followed by a restore check. Patching `pandas.read_sql` globally is safe for one call but silently wrong if the same test also runs a real query.
+- **A correct-looking result does not prove an ordering contract.** Removing `ORDER BY dmp.month` from the regional query initially left all 75 behavioral tests green because PostgreSQL happened to return the grouped rows in chronological order. A focused query-contract test that captures the generated SQL killed the mutation and raised the regional database suite to 76 tests.
+- **Value equality does not prove a JSON numeric type.** Changing `units_sold` or `dealer_count` from `int` to `float` in `RegionMonthlyPerformance` initially survived because values such as `211` and `211.0` compare equal in Python. A focused API test now checks parsed JSON types explicitly; mutations of `dealer_count`, `units_sold` and `target_units` to floats each fail that test.
 
 ---
 
@@ -227,17 +235,19 @@ Flags use unrounded values. Rounding is for display only.
 
 **Day 21: Continuous integration with GitHub Actions.** Inspected the project for environment assumptions before writing the workflow: `src/db.py` reads only `DATABASE_URL` and passes it to `create_engine`; the three SQL scripts contain no absolute paths, roles or owners; the loader uses relative `data/` paths, and all seven CSV files are committed. Rehearsed locally first: built a scratch database from the three scripts with `ON_ERROR_STOP=1` (loader rows 40 / 8 / 7,680 / 960 / 960 / 4,041; 960 dealer-month rows) and ran the suite against it (343 passed), then repeated the run from a fresh `git clone` with a new virtual environment installed from `requirements-dev.txt` (343 passed). Added `.github/workflows/ci.yml` on branch `ci-day21`: triggers on `push`, `pull_request` and manual dispatch with read-only `contents` permission; a `postgres:18.6` service container with a health check; `actions/checkout@v7` and `actions/setup-python@v7` with Python 3.12.7 and pip caching; install from `requirements-dev.txt`; database build from the three SQL scripts with `ON_ERROR_STOP=1`; `black --check` and `ruff check` on `src/db.py`, `src/api.py`, `src/models.py` and `tests`; then `python -m pytest -q`. CI #1 (`086b7fe`, runner `ubuntu-latest`) failed in 24 seconds in the Python setup step: the annotation read 'The version 3.12.7 with architecture x64 was not found for Ubuntu 26.04', and GitHub's notice on the same run said the `ubuntu-latest` label would migrate to Ubuntu 26 beginning 19 October 2026. Pinning `runs-on: ubuntu-24.04` (`93ba0b0`) fixed it: CI #2 on the branch passed every step in 54 seconds, and after a fast-forward merge CI #3 on `main` passed in 1 minute 45 seconds. A signed-out Actions page briefly showed the green run as still in progress, which led to a wrong first guess about a slow install; the step list showed install taking 16 seconds. Committed as `086b7fe` (workflow) and `93ba0b0` (runner pin) on `ci-day21`, fast-forwarded to `main`; the README badge and CI section followed in a separate documentation commit.
 
+**Day 22: Regional monthly performance history.** Added `get_region_performance_history(region, start=None, end=None)` and `GET /regions/{region}/performance`, using the existing `dealer_monthly_performance` view plus `dealers` for exact, case-sensitive regional aggregation. The query returns one row per region-month with `dealer_count`, total `units_sold`, total `target_units` and weighted `achievement_pct` calculated from total units divided by total target rather than averaging dealer percentages. If any contributing dealer lacks a target, regional `target_units` and `achievement_pct` are NULL; a zero regional target remains `0` while achievement is NULL. Optional `start` and `end` bounds are inclusive, use the same strict ASCII `YYYY-MM` validation as dealer history, and preserve the distinction between a valid region with an empty window (`200 []`) and an unknown region (`RegionNotFoundError` / HTTP 404). Added the six-field `RegionMonthlyPerformance` response model and kept malformed bounds and reversed ranges at 422 while unrelated failures such as a missing `DATABASE_URL` remain 500. Database tests cover all 5 regions × 24 months, independent CSV equivalence, reconciliation to network monthly totals, weighted-versus-average achievement, inclusive ranges, exact region matching, injection attempts, missing-target and zero-target rules, JSON-friendly numeric values and explicit SQL ordering. Database mutation checks killed boundary, region-filter, weighted-calculation, dealer-count, NULL-rule, zero-target, not-found and empty-window mutations; removing `ORDER BY` initially survived, so a focused SQL-contract test was added and then killed that mutation exactly, leaving 76 database/query tests. API tests cover all regions, inclusive range filtering, strict query-validation locations, 404/422 detail, the missing-`DATABASE_URL` 500 regression, response-model validation, NaN-to-null serialization and JSON numeric types. The first API mutation batch killed all 9 handler, regex and response-model mutations. In the second batch, 8 of 10 mutations were killed immediately; changing `units_sold` or `dealer_count` to floats survived until a focused JSON type test was added, after which float mutations for `dealer_count`, `units_sold` and `target_units` were all killed. The suite grew from 343 to 458 tests. Committed as `53502d2` (database query and tests), `0cbf7a6` (endpoint, response model and tests) and `73cdc19` (README). At the start of Day 22, the Day 21 follow-up commit `86fa72e` added a 15-minute timeout to the CI job (merged, CI green). After the three Day 22 commits were pushed, CI #7 on `73cdc19` passed in 54 seconds on the fresh runner, running Black, Ruff and all 458 tests.
+
 ---
 
 ## 9. Roadmap
 
-**Next:** a regional or network-wide monthly trend endpoint (Day 22), then centralizing the duplicated month-format rule now that CI protects the refactor (Day 23), keeping historical sales and target analytics separate from the September-specific inventory and risk metrics.
+**Next:** centralize the duplicated strict ASCII `YYYY-MM` validation rule across the database and FastAPI layers (Day 23), using the existing 458-test suite and CI as the refactor safety net.
 
 **Then:**
 
 - Richer FastAPI endpoints
 - Additional sales and inventory queries, with more automated API tests
-- A full lock file for transitive dependencies, and `timeout-minutes` plus branch protection for CI
+- A full lock file for transitive dependencies, plus branch protection for CI
 - LLM APIs and retrieval-augmented generation (RAG)
 - Dealer operations copilot and supply-chain risk assistant
 - AI agents
