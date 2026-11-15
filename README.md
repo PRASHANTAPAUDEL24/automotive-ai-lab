@@ -55,6 +55,7 @@ The dataset includes:
 - [x] Day 20: Optional inclusive `start` and `end` month filters for `GET /dealers/{dealer_id}/performance`, with empty-window handling, validation, and tests
 - [x] Day 21: GitHub Actions CI that rebuilds PostgreSQL from the repository's SQL scripts and tracked CSV files on a fresh runner, then runs Black, Ruff and the full test suite on every push and pull request
 - [x] Day 22: Regional monthly performance history (`GET /regions/{region}/performance`) with weighted achievement, inclusive month ranges, dedicated 404 handling, response validation, and tests
+- [x] Day 23: Single-source strict ASCII `YYYY-MM` month validation in `src/db.py`, reused across all five FastAPI month parameters, with contract tests that prevent regex drift or duplicated literals
 - [ ] Week 3: FastAPI
 - [ ] Week 4: Automotive Dealer Analytics API
 - [ ] Later: LLM APIs, RAG, agents, Docker, Azure
@@ -247,6 +248,8 @@ The current test suite covers:
 - unknown-region 404 behavior and strict query-bound validation
 - nullable regional target and achievement serialization
 - response-model enforcement and JSON numeric type guarantees
+- month-format contract tests: all five FastAPI month parameters must use the shared strict ASCII `YYYY-MM` pattern, and the rule's values are pinned
+- single-source protection: the month regex literal must appear exactly once in `src/`, in `src/db.py`
 
 ### Continuous integration
 
@@ -297,6 +300,7 @@ The cross-check is now automated: `tests/test_monthly_performance.py` recomputes
 - Sales and target performance are available through SQL, the Python query layer, `GET /performance?month=YYYY-MM` (all dealers for one month), `GET /dealers/{dealer_id}/performance` (one dealer's monthly history) and `GET /regions/{region}/performance` (weighted regional monthly history). Dealer and regional history can be limited with inclusive `start` and `end` bounds, covering the 24 months from October 2024 through September 2026.
 - `inventory_supply`, `dealer_scorecard` and the endpoints built on them (`GET /dealers`, `GET /dealers/{dealer_id}`, `GET /dealers/at-risk` and `GET /regions/summary`) remain fixed to September 2026. Inventory is a single snapshot as of September 30, 2026, so historical inventory and risk analysis is not yet month-aware.
 - Dealer and regional history range filters are limited to month precision (`YYYY-MM`); daily or arbitrary-date filtering is not implemented.
+- The strict ASCII `YYYY-MM` rule is centralized in `src/db.py` as `MONTH_FORMAT`; `MONTH_QUERY_PATTERN` and the compiled database regex are derived from it. Required-month and optional-bound validators still keep their different existing error messages by design.
 - The at-risk ranking order (risk tier, then months of supply) is a prioritization heuristic, not a validated predictive metric. Within the sales-risk-only tier, months of supply is a weak signal because all of those dealers are under 3.2 months.
 
 ## Planned Projects
