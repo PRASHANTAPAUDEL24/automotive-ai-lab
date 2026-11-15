@@ -7,6 +7,7 @@
 from fastapi import FastAPI, HTTPException, Query
 
 from db import (
+    MONTH_QUERY_PATTERN,
     DealerNotFoundError,
     InvalidFilterError,
     InvalidMonthError,
@@ -65,11 +66,11 @@ def dealer_performance_history(
     dealer_id: int,
     start: str | None = Query(
         default=None,
-        pattern=r"^[0-9]{4}-(0[1-9]|1[0-2])$",
+        pattern=MONTH_QUERY_PATTERN,
     ),
     end: str | None = Query(
         default=None,
-        pattern=r"^[0-9]{4}-(0[1-9]|1[0-2])$",
+        pattern=MONTH_QUERY_PATTERN,
     ),
 ):
     """
@@ -134,11 +135,11 @@ def region_performance_history(
     region: str,
     start: str | None = Query(
         default=None,
-        pattern=r"^[0-9]{4}-(0[1-9]|1[0-2])$",
+        pattern=MONTH_QUERY_PATTERN,
     ),
     end: str | None = Query(
         default=None,
-        pattern=r"^[0-9]{4}-(0[1-9]|1[0-2])$",
+        pattern=MONTH_QUERY_PATTERN,
     ),
 ):
     """
@@ -173,7 +174,7 @@ def region_performance_history(
 def monthly_performance(
     month: str = Query(
         ...,
-        pattern=r"^[0-9]{4}-(0[1-9]|1[0-2])$",
+        pattern=MONTH_QUERY_PATTERN,
         description="Month in YYYY-MM format.",
     ),
 ):

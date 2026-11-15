@@ -37,6 +37,15 @@ class RegionNotFoundError(ValueError):
     """Raised when a requested region does not exist."""
 
 
+# Strict ASCII YYYY-MM: four digits, then a month from 01 to 12.
+MONTH_FORMAT = r"[0-9]{4}-(0[1-9]|1[0-2])"
+
+# FastAPI Query validation anchors the same rule explicitly.
+MONTH_QUERY_PATTERN = rf"^{MONTH_FORMAT}$"
+
+_MONTH_RE = re.compile(MONTH_FORMAT)
+
+
 ALLOWED_RISKS = {
     "sales_risk",
     "inventory_risk",
@@ -247,10 +256,7 @@ def get_monthly_performance(month):
     MonthNotFoundError when a well-formed month has no data.
     """
 
-    if not isinstance(month, str) or not re.fullmatch(
-        r"[0-9]{4}-(0[1-9]|1[0-2])",
-        month,
-    ):
+    if not isinstance(month, str) or not _MONTH_RE.fullmatch(month):
         raise InvalidMonthError(f"Invalid month: {month!r}. Expected YYYY-MM.")
 
     query = text("""
@@ -291,13 +297,7 @@ def _validate_optional_month(value, field_name):
     if not isinstance(value, str):
         raise InvalidMonthError(f"{field_name} month must use YYYY-MM format")
 
-    if (
-        re.fullmatch(
-            r"[0-9]{4}-(0[1-9]|1[0-2])",
-            value,
-        )
-        is None
-    ):
+    if _MONTH_RE.fullmatch(value) is None:
         raise InvalidMonthError(f"{field_name} month must use YYYY-MM format")
 
 
