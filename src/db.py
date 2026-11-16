@@ -455,3 +455,72 @@ def get_region_performance_history(
             raise RegionNotFoundError(f"Region {region} not found")
 
     return history
+
+
+def get_network_performance_history(
+    start=None,
+    end=None,
+):
+    """
+    Return monthly sales and target performance for the whole dealer network.
+
+    Optional start and end bounds use strict YYYY-MM format and are
+    inclusive. Network achievement is calculated from total units divided
+    by total target, not by averaging dealer achievement percentages. A valid
+    window with no data returns an empty result; a network has no not-found
+    state.
+
+    Raises InvalidMonthError for malformed month bounds.
+    Raises InvalidMonthRangeError when start is after end.
+    """
+    _validate_optional_month(start, "start")
+    _validate_optional_month(end, "end")
+
+    if start is not None and end is not None and start > end:
+        raise InvalidMonthRangeError("start month must not be after end month")
+
+    clauses = []
+    params = {}
+
+    if start is not None:
+        clauses.append("dmp.month >= :start")
+        params["start"] = start
+
+    if end is not None:
+        clauses.append("dmp.month <= :end")
+        params["end"] = end
+
+    where_clause = ""
+
+    if clauses:
+        where_clause = "WHERE " + " AND ".join(clauses)
+
+    # Only fixed SQL fragments are joined here; user values stay bound parameters.
+    query = text(f"""
+        SELECT
+            dmp.month,
+            COUNT(*) AS dealer_count,
+            CAST(SUM(dmp.units_sold) AS bigint) AS units_sold,
+            CASE
+                WHEN COUNT(dmp.target_units) < COUNT(*)
+                THEN NULL
+                ELSE SUM(dmp.target_units)
+            END AS target_units,
+            CASE
+                WHEN COUNT(dmp.target_units) < COUNT(*)
+                    OR SUM(dmp.target_units) = 0
+                THEN NULL
+                ELSE SUM(dmp.units_sold) * 100.0
+                    / SUM(dmp.target_units)
+            END AS achievement_pct
+        FROM dealer_monthly_performance dmp
+        {where_clause}
+        GROUP BY dmp.month
+        ORDER BY dmp.month
+        """)
+
+    return pd.read_sql(
+        query,
+        get_engine(),
+        params=params,
+    )
