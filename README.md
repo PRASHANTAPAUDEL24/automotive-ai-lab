@@ -55,7 +55,8 @@ The dataset includes:
 - [x] Day 20: Optional inclusive `start` and `end` month filters for `GET /dealers/{dealer_id}/performance`, with empty-window handling, validation, and tests
 - [x] Day 21: GitHub Actions CI that rebuilds PostgreSQL from the repository's SQL scripts and tracked CSV files on a fresh runner, then runs Black, Ruff and the full test suite on every push and pull request
 - [x] Day 22: Regional monthly performance history (`GET /regions/{region}/performance`) with weighted achievement, inclusive month ranges, dedicated 404 handling, response validation, and tests
-- [x] Day 23: Single-source strict ASCII `YYYY-MM` month validation in `src/db.py`, reused across all five FastAPI month parameters, with contract tests that prevent regex drift or duplicated literals
+- [x] Day 23: Single-source strict ASCII `YYYY-MM` month validation in `src/db.py`, reused across the original five FastAPI month parameters, with contract tests that prevent regex drift or duplicated literals
+- [x] Day 24: Network-wide monthly performance trend (`GET /performance/trend`) with weighted achievement, inclusive month ranges, nullable target handling, response validation, and tests
 - [ ] Week 3: FastAPI
 - [ ] Week 4: Automotive Dealer Analytics API
 - [ ] Later: LLM APIs, RAG, agents, Docker, Azure
@@ -167,6 +168,7 @@ Interactive documentation is available at http://127.0.0.1:8000/docs.
 | `GET /dealers/{dealer_id}` | Returns one dealer scorecard. An unknown dealer id returns HTTP 404. A non-numeric id returns HTTP 422. |
 | `GET /regions/summary` | Returns one row per region, ordered by region: dealer count and the number of sales-risk, inventory-risk, combined-risk and early-overstock-watch dealers |
 | `GET /regions/{region}/performance` | Returns one region's monthly sales and target history, oldest first. Optional `start` and `end` parameters use strict `YYYY-MM` format and are inclusive. Unknown regions return 404; malformed or reversed bounds return 422. A valid region with no rows in the requested window returns `200 []`. |
+| `GET /performance/trend` | Returns network-wide monthly sales and target history, oldest first. Optional `start` and `end` parameters use strict `YYYY-MM` format and are inclusive. Achievement is weighted from total units divided by total target. Malformed or reversed bounds return 422, and a valid window with no rows returns `200 []`; the network has no not-found state. |
 | `GET /dealers/at-risk` | Returns the 20 sales-risk or inventory-risk dealers, ranked from most to least urgent. Optional `limit` (minimum 1) keeps the global ranks; `limit=0` or a non-integer returns 422 |
 | `GET /performance` | Returns dealer sales and target performance for the required `month` (`YYYY-MM`), for any month from 2024-10 to 2026-09. A malformed month returns 422, a well-formed month with no data returns 404, and target and achievement stay nullable. |
 | `GET /dealers/{dealer_id}/performance` | Returns one dealer's monthly sales and target history, oldest first. Optional `start` and `end` parameters use `YYYY-MM` and are inclusive. With no bounds, all 24 months are returned. An unknown dealer returns 404; malformed bounds, `start > end`, or a non-integer dealer id return 422. A valid dealer with no rows in the requested window returns `200 []`. |
@@ -202,6 +204,8 @@ If the data layer ever returns a value that does not match the model, the API re
 `GET /dealers/{dealer_id}/performance` returns the same `MonthlyPerformance` records for one dealer, ordered oldest first, with the same nullable `target_units` and `achievement_pct`. Optional `start` and `end` query parameters use strict `YYYY-MM` format and are inclusive. With neither bound, all 24 months are returned; `start` alone runs through the latest month, `end` alone begins at the earliest month, and equal bounds return one month. A valid dealer with no rows in the requested window returns `200 []`. An unknown dealer returns 404 (for example `Dealer 999 not found`), while malformed bounds, `start > end`, and a non-integer dealer id return 422.
 
 `GET /regions/{region}/performance` returns `RegionMonthlyPerformance` records with six fields: `region`, `month`, `dealer_count`, `units_sold`, `target_units` and `achievement_pct`. Regional achievement is weighted as total units sold divided by total target, not as the average of dealer percentages. `target_units` and `achievement_pct` are null when any contributing dealer is missing a target; a zero regional target keeps `target_units` as `0` and makes `achievement_pct` null. Region names are exact and case-sensitive, and an unknown region returns 404 (for example `Region Atlantis not found`). This differs from `GET /dealers?region=`, which returns an empty list for an unknown region. With no bounds, all 24 months are returned; `start` and `end` are inclusive when supplied. A valid region with no rows in the requested window returns `200 []`, while malformed or reversed bounds return 422.
+
+`GET /performance/trend` returns `NetworkMonthlyPerformance` records with five fields: `month`, `dealer_count`, `units_sold`, `target_units` and `achievement_pct`. Network achievement is weighted as total units sold divided by total target, not as the average of dealer percentages. `target_units` and `achievement_pct` are null when any contributing dealer is missing a target; a zero network target keeps `target_units` as `0` and makes `achievement_pct` null. With no bounds, all 24 months are returned; `start` and `end` use the shared strict ASCII `YYYY-MM` rule and are inclusive when supplied. A valid window with no rows returns `200 []`; there is no network not-found state. Malformed or reversed bounds return 422.
 
 ## Testing
 
@@ -248,7 +252,9 @@ The current test suite covers:
 - unknown-region 404 behavior and strict query-bound validation
 - nullable regional target and achievement serialization
 - response-model enforcement and JSON numeric type guarantees
-- month-format contract tests: all five FastAPI month parameters must use the shared strict ASCII `YYYY-MM` pattern, and the rule's values are pinned
+- network-wide monthly aggregation matched independently against the source CSVs and reconciled to the sum of the five regional rows
+- network trend range filtering, empty-window behavior, strict query-validation locations, nullable target serialization and existing `/performance` route regression
+- month-format contract tests: all seven FastAPI month parameters must use the shared strict ASCII `YYYY-MM` pattern, and the rule's values are pinned
 - single-source protection: the month regex literal must appear exactly once in `src/`, in `src/db.py`
 
 ### Continuous integration
@@ -297,10 +303,10 @@ The cross-check is now automated: `tests/test_monthly_performance.py` recomputes
 - All data is synthetic, so the findings demonstrate the analytical method, not real-world conclusions.
 - Months of supply currently uses September sales only.
 - The 80%, 90-day, 4-month, and 30% thresholds are business-rule assumptions and should be validated and tuned with stakeholders in a real deployment.
-- Sales and target performance are available through SQL, the Python query layer, `GET /performance?month=YYYY-MM` (all dealers for one month), `GET /dealers/{dealer_id}/performance` (one dealer's monthly history) and `GET /regions/{region}/performance` (weighted regional monthly history). Dealer and regional history can be limited with inclusive `start` and `end` bounds, covering the 24 months from October 2024 through September 2026.
+- Sales and target performance are available through SQL, the Python query layer, `GET /performance?month=YYYY-MM` (all dealers for one month), `GET /dealers/{dealer_id}/performance` (one dealer's monthly history), `GET /regions/{region}/performance` (weighted regional monthly history) and `GET /performance/trend` (weighted network-wide monthly history). Dealer, regional and network history can be limited with inclusive `start` and `end` bounds, covering the 24 months from October 2024 through September 2026.
 - `inventory_supply`, `dealer_scorecard` and the endpoints built on them (`GET /dealers`, `GET /dealers/{dealer_id}`, `GET /dealers/at-risk` and `GET /regions/summary`) remain fixed to September 2026. Inventory is a single snapshot as of September 30, 2026, so historical inventory and risk analysis is not yet month-aware.
-- Dealer and regional history range filters are limited to month precision (`YYYY-MM`); daily or arbitrary-date filtering is not implemented.
-- The strict ASCII `YYYY-MM` rule is centralized in `src/db.py` as `MONTH_FORMAT`; `MONTH_QUERY_PATTERN` and the compiled database regex are derived from it. Required-month and optional-bound validators still keep their different existing error messages by design.
+- Dealer, regional and network history range filters are limited to month precision (`YYYY-MM`); daily or arbitrary-date filtering is not implemented.
+- The strict ASCII `YYYY-MM` rule is centralized in `src/db.py` as `MONTH_FORMAT`; `MONTH_QUERY_PATTERN` and the compiled database regex are derived from it. All seven FastAPI month parameters use the shared query pattern. Required-month and optional-bound validators still keep their different existing error messages by design.
 - The at-risk ranking order (risk tier, then months of supply) is a prioritization heuristic, not a validated predictive metric. Within the sales-risk-only tier, months of supply is a weak signal because all of those dealers are under 3.2 months.
 
 ## Planned Projects
