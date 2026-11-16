@@ -114,3 +114,24 @@ class RegionMonthlyPerformance(BaseModel):
             "is zero."
         )
     )
+
+
+class NetworkMonthlyPerformance(BaseModel):
+    """Aggregated sales and target performance for the full dealer network."""
+
+    month: str
+    dealer_count: int
+    units_sold: int
+    target_units: int | None = Field(
+        description=(
+            "Network monthly target units. Null when any contributing "
+            "dealer has no target."
+        )
+    )
+    achievement_pct: float | None = Field(
+        description=(
+            "Network sales achievement based on total units divided by "
+            "total target. Null when a target is missing or the total target "
+            "is zero."
+        )
+    )

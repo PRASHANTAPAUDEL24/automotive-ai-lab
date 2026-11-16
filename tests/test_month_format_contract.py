@@ -24,6 +24,8 @@ MONTH_PARAMETERS = [
     ("/dealers/{dealer_id}/performance", "end"),
     ("/regions/{region}/performance", "start"),
     ("/regions/{region}/performance", "end"),
+    ("/performance/trend", "start"),
+    ("/performance/trend", "end"),
     ("/performance", "month"),
 ]
 

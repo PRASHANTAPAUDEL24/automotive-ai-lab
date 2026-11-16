@@ -18,6 +18,7 @@ from db import (
     get_dealer,
     get_dealer_performance_history,
     get_monthly_performance,
+    get_network_performance_history,
     get_region_performance_history,
     get_region_summary,
     get_scorecard,
@@ -26,6 +27,7 @@ from db import (
 from models import (
     Dealer,
     MonthlyPerformance,
+    NetworkMonthlyPerformance,
     RankedDealer,
     RegionMonthlyPerformance,
     RegionSummary,
@@ -161,6 +163,41 @@ def region_performance_history(
             status_code=404,
             detail=str(error),
         ) from error
+    except (InvalidMonthError, InvalidMonthRangeError) as error:
+        raise HTTPException(
+            status_code=422,
+            detail=str(error),
+        ) from error
+
+    return to_records(history)
+
+
+@app.get(
+    "/performance/trend",
+    response_model=list[NetworkMonthlyPerformance],
+)
+def network_performance_history(
+    start: str | None = Query(
+        default=None,
+        pattern=MONTH_QUERY_PATTERN,
+    ),
+    end: str | None = Query(
+        default=None,
+        pattern=MONTH_QUERY_PATTERN,
+    ),
+):
+    """
+    Return monthly sales and target performance for the full dealer network.
+
+    Optional start and end bounds are inclusive. A valid range with no data
+    returns an empty list. Malformed query bounds return 422 through FastAPI
+    validation, and a reversed range returns 422.
+    """
+    try:
+        history = get_network_performance_history(
+            start=start,
+            end=end,
+        )
     except (InvalidMonthError, InvalidMonthRangeError) as error:
         raise HTTPException(
             status_code=422,
