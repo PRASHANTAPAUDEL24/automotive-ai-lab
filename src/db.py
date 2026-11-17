@@ -21,6 +21,10 @@ class InvalidMonthError(ValueError):
     """Raised when a month is not a string in YYYY-MM format."""
 
 
+class InvalidLimitError(ValueError):
+    """Raised when a ranking limit is outside the supported range."""
+
+
 class MonthNotFoundError(ValueError):
     """Raised when a well-formed month has no data."""
 
@@ -44,6 +48,14 @@ MONTH_FORMAT = r"[0-9]{4}-(0[1-9]|1[0-2])"
 MONTH_QUERY_PATTERN = rf"^{MONTH_FORMAT}$"
 
 _MONTH_RE = re.compile(MONTH_FORMAT)
+
+MAX_LIMIT = 2**63 - 1
+
+
+def _validate_month(month):
+    """Validate one required month using the shared YYYY-MM contract."""
+    if not isinstance(month, str) or not _MONTH_RE.fullmatch(month):
+        raise InvalidMonthError(f"Invalid month: {month!r}. Expected YYYY-MM.")
 
 
 ALLOWED_RISKS = {
@@ -256,8 +268,7 @@ def get_monthly_performance(month):
     MonthNotFoundError when a well-formed month has no data.
     """
 
-    if not isinstance(month, str) or not _MONTH_RE.fullmatch(month):
-        raise InvalidMonthError(f"Invalid month: {month!r}. Expected YYYY-MM.")
+    _validate_month(month)
 
     query = text("""
         SELECT
@@ -282,6 +293,86 @@ def get_monthly_performance(month):
         raise MonthNotFoundError(f"Month {month} not found")
 
     return performance
+
+
+def get_monthly_dealer_ranking(month, limit=None):
+    """
+    Return dealers ranked by monthly achievement percentage.
+
+    Dealers without a defined achievement percentage are excluded.
+    Ranking uses the raw achievement value, with dealer_id as the
+    deterministic tie-break. A well-formed month with no data raises
+    MonthNotFoundError; an existing month with no rankable dealers
+    returns an empty DataFrame.
+    """
+    _validate_month(month)
+
+    if limit is not None and (
+        isinstance(limit, bool)
+        or not isinstance(limit, int)
+        or limit < 1
+        or limit > MAX_LIMIT
+    ):
+        raise InvalidLimitError(
+            f"Invalid limit: {limit!r}. "
+            f"Expected an integer between 1 and {MAX_LIMIT}."
+        )
+
+    source = get_engine()
+
+    existence_query = text("""
+        SELECT 1
+        FROM dealer_monthly_performance
+        WHERE month = :month
+        LIMIT 1
+        """)
+
+    month_exists = pd.read_sql(
+        existence_query,
+        source,
+        params={"month": month},
+    )
+
+    if month_exists.empty:
+        raise MonthNotFoundError(f"Month {month} not found")
+
+    query_sql = """
+        WITH ranked AS (
+            SELECT
+                dealer_id,
+                dealer_name,
+                month,
+                units_sold,
+                target_units,
+                achievement_pct,
+                ROW_NUMBER() OVER (ORDER BY achievement_pct DESC, dealer_id ASC) AS rank
+            FROM dealer_monthly_performance
+            WHERE month = :month
+              AND achievement_pct IS NOT NULL
+        )
+        SELECT
+            dealer_id,
+            dealer_name,
+            month,
+            units_sold,
+            target_units,
+            achievement_pct,
+            rank
+        FROM ranked
+        ORDER BY rank
+    """
+
+    params = {"month": month}
+
+    if limit is not None:
+        query_sql += "\nLIMIT CAST(:limit AS bigint)"
+        params["limit"] = limit
+
+    return pd.read_sql(
+        text(query_sql),
+        source,
+        params=params,
+    )
 
 
 def _validate_optional_month(value, field_name):
