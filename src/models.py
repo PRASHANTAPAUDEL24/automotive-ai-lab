@@ -94,6 +94,22 @@ class MonthlyPerformance(BaseModel):
     )
 
 
+class RankedMonthlyPerformance(BaseModel):
+    """One dealer's ranked performance for a required month."""
+
+    dealer_id: int
+    dealer_name: str
+    month: str
+    units_sold: int
+    target_units: int = Field(description="Monthly target units for a rankable dealer.")
+    achievement_pct: float = Field(
+        description="Sales achievement versus target for a rankable dealer."
+    )
+    rank: int = Field(
+        description="Monthly performance rank; 1 is the highest achievement."
+    )
+
+
 class RegionMonthlyPerformance(BaseModel):
     """Aggregated sales and target performance for one region and month."""
 

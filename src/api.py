@@ -7,9 +7,11 @@
 from fastapi import FastAPI, HTTPException, Query
 
 from db import (
+    MAX_LIMIT,
     MONTH_QUERY_PATTERN,
     DealerNotFoundError,
     InvalidFilterError,
+    InvalidLimitError,
     InvalidMonthError,
     InvalidMonthRangeError,
     MonthNotFoundError,
@@ -17,6 +19,7 @@ from db import (
     get_at_risk_dealers,
     get_dealer,
     get_dealer_performance_history,
+    get_monthly_dealer_ranking,
     get_monthly_performance,
     get_network_performance_history,
     get_region_performance_history,
@@ -29,6 +32,7 @@ from models import (
     MonthlyPerformance,
     NetworkMonthlyPerformance,
     RankedDealer,
+    RankedMonthlyPerformance,
     RegionMonthlyPerformance,
     RegionSummary,
 )
@@ -205,6 +209,42 @@ def network_performance_history(
         ) from error
 
     return to_records(history)
+
+
+@app.get(
+    "/performance/ranking",
+    response_model=list[RankedMonthlyPerformance],
+)
+def monthly_performance_ranking(
+    month: str = Query(
+        ...,
+        pattern=MONTH_QUERY_PATTERN,
+        description="Month in YYYY-MM format.",
+    ),
+    limit: int | None = Query(
+        default=None,
+        ge=1,
+        le=MAX_LIMIT,
+    ),
+):
+    """Return dealers ranked by achievement for one month."""
+    try:
+        ranking = get_monthly_dealer_ranking(
+            month,
+            limit=limit,
+        )
+    except (InvalidMonthError, InvalidLimitError) as error:
+        raise HTTPException(
+            status_code=422,
+            detail=str(error),
+        ) from error
+    except MonthNotFoundError as error:
+        raise HTTPException(
+            status_code=404,
+            detail=str(error),
+        ) from error
+
+    return to_records(ranking)
 
 
 @app.get("/performance", response_model=list[MonthlyPerformance])
