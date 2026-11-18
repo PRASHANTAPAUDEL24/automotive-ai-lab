@@ -462,6 +462,58 @@ def get_dealer_performance_history(
     return history
 
 
+def get_regional_performance_snapshot(month):
+    """
+    Return one weighted performance row per region for a required month.
+
+    Regions are ordered alphabetically. If any contributing dealer is
+    missing a target, that region's target_units and achievement_pct are
+    NULL. A zero regional target keeps target_units at 0 and makes
+    achievement_pct NULL.
+
+    A well-formed month with no data raises MonthNotFoundError.
+    """
+    _validate_month(month)
+
+    query = text("""
+        SELECT
+            d.region,
+            dmp.month,
+            COUNT(*) AS dealer_count,
+            CAST(SUM(dmp.units_sold) AS bigint) AS units_sold,
+            CASE
+                WHEN COUNT(dmp.target_units) < COUNT(*) THEN NULL
+                ELSE SUM(dmp.target_units)
+            END AS target_units,
+            CASE
+                WHEN COUNT(dmp.target_units) < COUNT(*) THEN NULL
+                WHEN SUM(dmp.target_units) = 0 THEN NULL
+                ELSE
+                    SUM(dmp.units_sold) * 100.0
+                    / SUM(dmp.target_units)
+            END AS achievement_pct
+        FROM dealer_monthly_performance AS dmp
+        JOIN dealers AS d
+            ON d.dealer_id = dmp.dealer_id
+        WHERE dmp.month = :month
+        GROUP BY
+            d.region,
+            dmp.month
+        ORDER BY d.region
+        """)
+
+    snapshot = pd.read_sql(
+        query,
+        get_engine(),
+        params={"month": month},
+    )
+
+    if snapshot.empty:
+        raise MonthNotFoundError(f"Month {month} not found")
+
+    return snapshot
+
+
 def get_region_performance_history(
     region,
     start=None,
