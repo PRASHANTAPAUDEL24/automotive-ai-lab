@@ -28,6 +28,7 @@ MONTH_PARAMETERS = [
     ("/performance/trend", "end"),
     ("/performance", "month"),
     ("/performance/ranking", "month"),
+    ("/performance/regions", "month"),
 ]
 
 

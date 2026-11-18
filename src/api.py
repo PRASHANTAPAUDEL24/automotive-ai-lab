@@ -24,6 +24,7 @@ from db import (
     get_network_performance_history,
     get_region_performance_history,
     get_region_summary,
+    get_regional_performance_snapshot,
     get_scorecard,
     to_records,
 )
@@ -245,6 +246,34 @@ def monthly_performance_ranking(
         ) from error
 
     return to_records(ranking)
+
+
+@app.get(
+    "/performance/regions",
+    response_model=list[RegionMonthlyPerformance],
+)
+def regional_performance_snapshot(
+    month: str = Query(
+        ...,
+        pattern=MONTH_QUERY_PATTERN,
+        description="Month in YYYY-MM format.",
+    ),
+):
+    """Return one weighted performance row per region for one month."""
+    try:
+        snapshot = get_regional_performance_snapshot(month)
+    except InvalidMonthError as error:
+        raise HTTPException(
+            status_code=422,
+            detail=str(error),
+        ) from error
+    except MonthNotFoundError as error:
+        raise HTTPException(
+            status_code=404,
+            detail=str(error),
+        ) from error
+
+    return to_records(snapshot)
 
 
 @app.get("/performance", response_model=list[MonthlyPerformance])
