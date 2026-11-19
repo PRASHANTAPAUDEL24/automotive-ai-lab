@@ -4,6 +4,7 @@
 DROP VIEW IF EXISTS dealer_scorecard CASCADE;
 DROP VIEW IF EXISTS inventory_supply CASCADE;
 DROP VIEW IF EXISTS dealer_performance CASCADE;
+DROP VIEW IF EXISTS monthly_performance_rollup CASCADE;
 DROP VIEW IF EXISTS dealer_monthly_performance CASCADE;
 
 -- One row per dealer and month. A dealer with no sales in a month gets units_sold = 0.
@@ -43,6 +44,35 @@ LEFT JOIN monthly_sales s
 LEFT JOIN dealer_targets t
     ON d.dealer_id = t.dealer_id
     AND m.month = t.month;
+
+
+-- Shared regional and network monthly performance aggregation.
+-- Regional rows have a non-NULL region; region IS NULL identifies the
+-- whole-network row because dealers.region is NOT NULL.
+CREATE VIEW monthly_performance_rollup AS
+SELECT
+    d.region,
+    dmp.month,
+    COUNT(*) AS dealer_count,
+    CAST(SUM(dmp.units_sold) AS bigint) AS units_sold,
+    CASE
+        WHEN COUNT(dmp.target_units) < COUNT(*) THEN NULL
+        ELSE SUM(dmp.target_units)
+    END AS target_units,
+    CASE
+        WHEN COUNT(dmp.target_units) < COUNT(*)
+            OR SUM(dmp.target_units) = 0
+        THEN NULL
+        ELSE SUM(dmp.units_sold) * 100.0
+            / SUM(dmp.target_units)
+    END AS achievement_pct
+FROM dealer_monthly_performance dmp
+JOIN dealers d
+    ON d.dealer_id = dmp.dealer_id
+GROUP BY GROUPING SETS (
+    (d.region, dmp.month),
+    (dmp.month)
+);
 
 
 CREATE VIEW dealer_performance AS
