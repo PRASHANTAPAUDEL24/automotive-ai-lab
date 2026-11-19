@@ -66,4 +66,4 @@ jobs:
         run: python -m ruff check src/db.py src/api.py src/models.py tests
 
       - name: Run tests
-        run: python -m pytest -q
+        run: python -m pytest -q --durations=15
