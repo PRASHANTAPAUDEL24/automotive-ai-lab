@@ -315,3 +315,66 @@ def test_rollup_definition_uses_one_grouping_sets_aggregate():
     assert definition is not None, "monthly_performance_rollup view does not exist"
     assert "GROUPING SETS" in definition.upper()
     assert "UNION" not in definition.upper()
+
+
+def test_performance_consumers_delegate_aggregation_to_rollup_view(monkeypatch):
+    captured = []
+
+    def fake_read_sql(query, engine, params=None):
+        sql = str(query)
+        captured.append(sql)
+
+        if "region = :region" in sql:
+            return pd.DataFrame(
+                [
+                    {
+                        "region": "Midwest",
+                        "month": "2026-09",
+                        "dealer_count": 8,
+                        "units_sold": 100,
+                        "target_units": 100,
+                        "achievement_pct": 100.0,
+                    }
+                ]
+            )
+
+        if "region IS NULL" in sql:
+            return pd.DataFrame(
+                [
+                    {
+                        "month": "2026-09",
+                        "dealer_count": 40,
+                        "units_sold": 500,
+                        "target_units": 500,
+                        "achievement_pct": 100.0,
+                    }
+                ]
+            )
+
+        return pd.DataFrame(
+            [
+                {
+                    "region": "Midwest",
+                    "month": "2026-09",
+                    "dealer_count": 8,
+                    "units_sold": 100,
+                    "target_units": 100,
+                    "achievement_pct": 100.0,
+                }
+            ]
+        )
+
+    monkeypatch.setattr(db.pd, "read_sql", fake_read_sql)
+
+    db.get_region_performance_history("Midwest")
+    db.get_network_performance_history()
+    db.get_regional_performance_snapshot("2026-09")
+
+    assert len(captured) == 3
+
+    for sql in captured:
+        normalized_sql = " ".join(sql.split())
+
+        assert "FROM monthly_performance_rollup" in normalized_sql
+        assert "SUM(" not in normalized_sql.upper()
+        assert "GROUP BY" not in normalized_sql.upper()

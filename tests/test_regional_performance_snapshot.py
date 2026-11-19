@@ -563,7 +563,7 @@ def test_snapshot_runs_one_ordered_query():
     relevant = [
         statement
         for statement in statements
-        if "dealer_monthly_performance" in statement
+        if "monthly_performance_rollup" in statement
     ]
 
     # One query is sufficient because an empty result
@@ -576,6 +576,9 @@ def test_snapshot_runs_one_ordered_query():
         r"ORDER BY (\w+\.)?region\s*$",
         sql,
     )
+
+    normalized_sql = " ".join(sql.split())
+    assert "AND region IS NOT NULL" in normalized_sql
 
 
 def test_snapshot_binds_month_instead_of_interpolating_it():
@@ -619,7 +622,7 @@ def test_snapshot_binds_month_instead_of_interpolating_it():
     relevant = [
         (statement, parameters)
         for statement, parameters in captured
-        if "dealer_monthly_performance" in statement
+        if "monthly_performance_rollup" in statement
     ]
 
     assert len(relevant) == 1

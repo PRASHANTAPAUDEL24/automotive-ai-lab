@@ -413,5 +413,7 @@ def test_network_query_explicitly_orders_by_month(monkeypatch):
     result = db.get_network_performance_history()
 
     assert len(result) == 1
-    assert "ORDER BY dmp.month" in captured["query"]
+    assert "FROM monthly_performance_rollup" in captured["query"]
+    assert "region IS NULL" in captured["query"]
+    assert "ORDER BY month" in captured["query"]
     assert captured["params"] == {}

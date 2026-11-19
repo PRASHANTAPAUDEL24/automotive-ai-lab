@@ -477,29 +477,16 @@ def get_regional_performance_snapshot(month):
 
     query = text("""
         SELECT
-            d.region,
-            dmp.month,
-            COUNT(*) AS dealer_count,
-            CAST(SUM(dmp.units_sold) AS bigint) AS units_sold,
-            CASE
-                WHEN COUNT(dmp.target_units) < COUNT(*) THEN NULL
-                ELSE SUM(dmp.target_units)
-            END AS target_units,
-            CASE
-                WHEN COUNT(dmp.target_units) < COUNT(*) THEN NULL
-                WHEN SUM(dmp.target_units) = 0 THEN NULL
-                ELSE
-                    SUM(dmp.units_sold) * 100.0
-                    / SUM(dmp.target_units)
-            END AS achievement_pct
-        FROM dealer_monthly_performance AS dmp
-        JOIN dealers AS d
-            ON d.dealer_id = dmp.dealer_id
-        WHERE dmp.month = :month
-        GROUP BY
-            d.region,
-            dmp.month
-        ORDER BY d.region
+            region,
+            month,
+            dealer_count,
+            units_sold,
+            target_units,
+            achievement_pct
+        FROM monthly_performance_rollup
+        WHERE month = :month
+          AND region IS NOT NULL
+        ORDER BY region
         """)
 
     snapshot = pd.read_sql(
@@ -536,44 +523,29 @@ def get_region_performance_history(
     if start is not None and end is not None and start > end:
         raise InvalidMonthRangeError("start month must not be after end month")
 
-    clauses = ["d.region = :region"]
+    clauses = ["region = :region"]
     params = {"region": region}
 
     if start is not None:
-        clauses.append("dmp.month >= :start")
+        clauses.append("month >= :start")
         params["start"] = start
 
     if end is not None:
-        clauses.append("dmp.month <= :end")
+        clauses.append("month <= :end")
         params["end"] = end
 
     # Only fixed SQL fragments are joined here; user values stay bound parameters.
     query = text(f"""
         SELECT
-            d.region,
-            dmp.month,
-            COUNT(*) AS dealer_count,
-            CAST(SUM(dmp.units_sold) AS bigint) AS units_sold,
-            CASE
-                WHEN COUNT(dmp.target_units) < COUNT(*)
-                THEN NULL
-                ELSE SUM(dmp.target_units)
-            END AS target_units,
-            CASE
-                WHEN COUNT(dmp.target_units) < COUNT(*)
-                    OR SUM(dmp.target_units) = 0
-                THEN NULL
-                ELSE SUM(dmp.units_sold) * 100.0
-                    / SUM(dmp.target_units)
-            END AS achievement_pct
-        FROM dealer_monthly_performance dmp
-        JOIN dealers d
-            ON d.dealer_id = dmp.dealer_id
+            region,
+            month,
+            dealer_count,
+            units_sold,
+            target_units,
+            achievement_pct
+        FROM monthly_performance_rollup
         WHERE {" AND ".join(clauses)}
-        GROUP BY
-            d.region,
-            dmp.month
-        ORDER BY dmp.month
+        ORDER BY month
         """)
 
     history = pd.read_sql(
@@ -622,44 +594,30 @@ def get_network_performance_history(
     if start is not None and end is not None and start > end:
         raise InvalidMonthRangeError("start month must not be after end month")
 
-    clauses = []
+    clauses = ["region IS NULL"]
     params = {}
 
     if start is not None:
-        clauses.append("dmp.month >= :start")
+        clauses.append("month >= :start")
         params["start"] = start
 
     if end is not None:
-        clauses.append("dmp.month <= :end")
+        clauses.append("month <= :end")
         params["end"] = end
 
-    where_clause = ""
-
-    if clauses:
-        where_clause = "WHERE " + " AND ".join(clauses)
+    where_clause = "WHERE " + " AND ".join(clauses)
 
     # Only fixed SQL fragments are joined here; user values stay bound parameters.
     query = text(f"""
         SELECT
-            dmp.month,
-            COUNT(*) AS dealer_count,
-            CAST(SUM(dmp.units_sold) AS bigint) AS units_sold,
-            CASE
-                WHEN COUNT(dmp.target_units) < COUNT(*)
-                THEN NULL
-                ELSE SUM(dmp.target_units)
-            END AS target_units,
-            CASE
-                WHEN COUNT(dmp.target_units) < COUNT(*)
-                    OR SUM(dmp.target_units) = 0
-                THEN NULL
-                ELSE SUM(dmp.units_sold) * 100.0
-                    / SUM(dmp.target_units)
-            END AS achievement_pct
-        FROM dealer_monthly_performance dmp
+            month,
+            dealer_count,
+            units_sold,
+            target_units,
+            achievement_pct
+        FROM monthly_performance_rollup
         {where_clause}
-        GROUP BY dmp.month
-        ORDER BY dmp.month
+        ORDER BY month
         """)
 
     return pd.read_sql(
