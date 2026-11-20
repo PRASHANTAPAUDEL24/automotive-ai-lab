@@ -4,3 +4,5 @@
 \copy dealer_targets FROM 'data/dealer_targets.csv' CSV HEADER
 \copy leads_monthly FROM 'data/leads_monthly.csv' CSV HEADER
 \copy inventory_snapshot FROM 'data/inventory_snapshot.csv' CSV HEADER
+
+ANALYZE;
