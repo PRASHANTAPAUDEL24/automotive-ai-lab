@@ -1,6 +1,6 @@
 # Automotive AI Lab: Project Progress Summary
 
-**Last updated:** 20 Nov 2026 · **Latest code commit:** `cbd3dd4` (Analyze tables after the load so rollup plans stay cheap) · **Tests:** 735 passing in CI · **CI:** passing on `main`
+**Last updated:** 20 Nov 2026 · **Latest code commit:** `152ae2d` (Fix at-risk limit overflow with bigint cast and upper bound) · **Tests:** 743 passing in CI · **CI:** passing on `main`
 **Repository:** https://github.com/PRASHANTAPAUDEL24/automotive-ai-lab
 **Author:** Prashanta Paudel
 
@@ -23,7 +23,7 @@ The project builds a data and analytics foundation for AI-powered automotive dea
 | `GET /dealers` | Scorecard for all dealers; optional `region` and `risk` filters. Unsupported `risk` returns 400; unknown region returns `[]` |
 | `GET /dealers/{dealer_id}` | One dealer scorecard. Unknown id returns 404; non-integer id returns 422 |
 | `GET /regions/summary` | One row per region: dealer count and counts of sales-risk, inventory-risk, combined-risk and early-overstock-watch dealers |
-| `GET /dealers/at-risk` | The 20 sales-risk or inventory-risk dealers, ranked (1 = most urgent). Optional `limit` (minimum 1) keeps the global ranks; 0 or a non-integer returns 422 |
+| `GET /dealers/at-risk` | The 20 sales-risk or inventory-risk dealers, ranked (1 = most urgent). Optional `limit` accepts 1 through `2**63 - 1` and keeps the global ranks; zero, non-integers, or values above the PostgreSQL `bigint` maximum return 422 |
 | `GET /performance` | Dealer sales and target performance for the required `month` (`YYYY-MM`), 2024-10 to 2026-09. 422 for a malformed month, 404 for a well-formed month with no data. |
 | `GET /dealers/{dealer_id}/performance` | One dealer's sales and target history, oldest first. Optional inclusive `start` and `end` filters use `YYYY-MM`; no bounds returns all 24 months. A valid dealer with no rows in the window returns `[]`; unknown id returns 404; malformed bounds, `start > end`, or a non-integer id return 422. |
 | `GET /regions/{region}/performance` | One region's monthly sales and target history, oldest first. `achievement_pct` is weighted from total units divided by total target. Region names are exact and case-sensitive. Optional inclusive `start` and `end` filters use strict `YYYY-MM`; no bounds returns all 24 months. A valid region with no rows in the window returns `[]`; an unknown region returns 404; malformed or reversed bounds return 422. |
@@ -32,10 +32,10 @@ The project builds a data and analytics foundation for AI-powered automotive dea
 | `GET /performance/regions` | Compares all five regions for one required `month=YYYY-MM`, ordered by region. Achievement is weighted from regional total units divided by regional total target. A missing dealer target keeps the region in the response with null target and achievement; a zero regional target remains `0` with null achievement. Malformed months return 422 and well-formed months with no data return 404. |
 
 - Pydantic response models (`Dealer`: 17 fields, 5 nullable; `RegionSummary`: region plus 5 count fields; `RankedDealer`: `Dealer` plus `rank` and `risk_tier`; `MonthlyPerformance`: 6 fields, 2 nullable; `RegionMonthlyPerformance`: 6 fields, 2 nullable; `NetworkMonthlyPerformance`: 5 fields, 2 nullable; `RankedMonthlyPerformance`: 7 required non-null fields) that validate API output and drive the schemas shown in `/docs`.
-- A pytest suite of 735 tests. Day 27 added 12 direct `monthly_performance_rollup` view-contract tests, 1 consumer-contract test, 1 deterministic load-script statistics guard and 1 JIT-aware rollup plan-cost guard. The shared strict ASCII `YYYY-MM` contract continues to cover nine FastAPI month parameters. On the local PostgreSQL build the JIT-specific guard skips because JIT is unavailable; CI has JIT available and all 735 tests pass there.
+- A pytest suite of 743 tests. Day 28 added 8 focused `/dealers/at-risk` large-limit regression tests covering three valid values above the former 32-bit ceiling, DB/API parity with the unbounded ranking, the one-above-`bigint` 422 boundary, and the SQL `bigint` cast contract. Day 27 added 12 direct `monthly_performance_rollup` view-contract tests, 1 consumer-contract test, 1 deterministic load-script statistics guard and 1 JIT-aware rollup plan-cost guard. The shared strict ASCII `YYYY-MM` contract continues to cover nine FastAPI month parameters. On the local PostgreSQL build the JIT-specific guard skips because JIT is unavailable; CI has JIT available and all 743 tests pass there.
 - GitHub Actions CI on every push and pull request: a fresh `ubuntu-24.04` runner with a `postgres:18.6` service rebuilds the database from the SQL scripts, then runs Black, Ruff and the full test suite.
 
-**Next step:** Fix the legacy `/dealers/at-risk` `limit` overflow by changing the PostgreSQL cast to `bigint`, adding the matching FastAPI maximum bound, and covering the regression with database and API tests.
+**Next step:** Continue the FastAPI layer with the next dealer-analytics endpoint, keeping the same test-first, contract-first workflow.
 
 **Architecture**
 
@@ -135,7 +135,7 @@ Flags use unrounded values. Rounding is for display only.
 - `GET /performance/ranking` excludes dealers whose achievement is undefined because the target is missing or zero. Ranking uses raw, unrounded achievement highest-first with `dealer_id` as the deterministic tie-break. `ROW_NUMBER()` gives contiguous positional ranks; the optional `limit` is applied after ranking and capped at PostgreSQL bigint maximum (`2**63 - 1`).
 - `get_monthly_dealer_ranking()` performs two database reads: one to establish that the requested month exists and one to return the rankable rows. With the project's static analytical dataset this is harmless, but under concurrent writes the two reads could theoretically observe different states unless they share a transaction or snapshot.
 - `GET /performance/ranking` currently supports highest-achievement-first ordering only; there is no ascending/descending sort-direction parameter.
-- `GET /dealers/at-risk` casts `limit` to a 32-bit integer, so a value above 2,147,483,647 raises PostgreSQL `NumericValueOutOfRange` and returns 500. FastAPI currently validates only the minimum; this remains a separate legacy limitation from the Day 25 ranking endpoint.
+- `get_at_risk_dealers()` has no Python-side limit validation, unlike `get_monthly_dealer_ranking()`: a direct call with a limit above `2**63 - 1` raises a database error. The API is protected by the `le=MAX_LIMIT` bound and returns 422.
 - Regional and network weighted performance now share one PostgreSQL `monthly_performance_rollup` view built with `GROUPING SETS`; the missing-target, zero-target and weighted-achievement rules are defined once in SQL instead of repeated by the three Python consumers. The view intentionally contains two grains: non-NULL `region` rows represent `(region, month)` results, while `region IS NULL` represents the whole-network `(month)` result. That convention relies on `dealers.region` remaining `NOT NULL`, and each consumer must filter the intended grain explicitly.
 - Region-specific consumers filter the rollup result after aggregation; the implementation does not rely on PostgreSQL pushing `WHERE region = ...` beneath the `GROUPING SETS` aggregate. With the current 960 dealer-month base rows, the additional aggregation work is negligible, but the design should be revisited if the dataset grows substantially.
 - Fresh database loads now end with `ANALYZE;` so planner statistics exist before queries run. Without statistics, the representative regional rollup query was estimated at about 584,068 cost; after `ANALYZE` the estimate fell to about 12,917, below PostgreSQL's default `jit_above_cost` of 100,000. The earlier CI slowdown is consistent with a JIT-enabled server treating the un-analyzed rollup query as an expensive compilation candidate; JIT time was not measured directly.
@@ -210,6 +210,7 @@ Flags use unrounded values. Rounding is for display only.
 - **An empty ranking is not the same as a missing month.** Month existence is checked separately from rankability. An existing month with all targets missing or zero returns `200 []`, while a well-formed month with no data raises `MonthNotFoundError` and returns 404.
 - **Centralize an aggregation rule at the grain where it is defined.** The regional-history, network-trend and cross-region snapshot queries repeated the same weighted-achievement and missing-target logic. A single `GROUPING SETS` view now produces both regional and network grains directly from dealer-month rows, so the business rule is defined once while each consumer only filters and orders its required grain.
 - **Fresh data still needs planner statistics.** A database can be logically correct yet perform badly immediately after loading. The Day 27 rollup exposed this in CI: adding `ANALYZE;` after the load reduced the representative estimated plan cost from about 584k to 12.9k and restored pytest from 84–124 seconds to 9.21 seconds.
+- **Pin external numeric boundaries independently of production constants.** The Day 28 tests use the PostgreSQL signed-`bigint` boundary `2**63 - 1` directly rather than deriving it from `db.MAX_LIMIT`, so an accidental change to the production constant cannot move the test boundary with the bug.
 
 ---
 
@@ -283,11 +284,17 @@ CI #22 then exposed a performance issue that did not reproduce locally. Its orig
 
 Commit `cbd3dd4` (Analyze tables after the load so rollup plans stay cheap) therefore added `ANALYZE;` after the final `\copy` in `sql/02_load.sql`, a deterministic source-level regression test proving that the load ends with analysis, and a JIT-aware plan-cost guard that runs only where PostgreSQL JIT is enabled and available. The source guard was mutation-tested by temporarily removing `ANALYZE;`, which made the test fail exactly as intended. A fresh local database ran 734 tests with the JIT-only guard skipped in 8.50 seconds, and its analyzed rollup plan cost was 12,916.93. CI #24 had JIT available, ran the guard instead of skipping it, passed all 735 tests in 9.21 seconds, and completed the full workflow in about 1 minute 2 seconds. The before/after result strongly supports missing planner statistics on the fresh CI database as the dominant contributor to the Day 27 test slowdown.
 
+**Day 28: At-risk limit bigint boundary fix.** Reproduced the legacy `GET /dealers/at-risk?limit=N` failure for limits above PostgreSQL's 32-bit integer ceiling. The query still used `LIMIT CAST(:limit AS integer)`, while the newer monthly-ranking path already used `bigint` and the shared `MAX_LIMIT = 2**63 - 1` API bound. Added a dedicated 8-test regression file before changing production code. The red run failed all 8 tests for the intended reasons: three direct database large-limit cases overflowed, three API large-limit cases returned 500, the one-above-`bigint` API case returned 500 instead of 422, and the SQL contract still found `AS integer`.
+
+Commit `152ae2d` (Fix at-risk limit overflow with bigint cast and upper bound) changed the legacy query cast to `bigint` and added `le=MAX_LIMIT` to the FastAPI parameter. Valid large limits including `2**31`, `99_999_999_999` and `2**63 - 1` now return the same globally ranked 20 dealers as the unbounded query, while `2**63` is rejected with 422 at `query.limit`. The focused green suite passed all 8 tests; the full local suite reached 742 passed with the JIT-only plan guard skipped.
+
+A block-scoped mutation harness then verified three regression protections. Changing the SQL cast back to `integer` was killed by 7 of the 8 focused tests; removing `le=MAX_LIMIT` was killed by the one-above-maximum 422 test; and changing the bound to `MAX_LIMIT - 1` was killed by the valid `2**63 - 1` API case. Only pytest exit code 1 counted as a valid kill, both source files were restored byte-for-byte by SHA, and stale bytecode was cleared between runs. Final mutation result: 3 of 3 killed. CI #26 passed all 743 tests in 6.32 seconds and completed the workflow in about 56 seconds.
+
 ---
 
 ## 9. Roadmap
 
-**Next:** Fix the legacy `/dealers/at-risk` `limit` overflow by using a PostgreSQL `bigint` cast and matching FastAPI maximum bound, with regression tests.
+**Next:** Continue the FastAPI layer with the next dealer-analytics endpoint, preserving the existing validation, response-model and regression-testing conventions.
 
 **Then:**
 
