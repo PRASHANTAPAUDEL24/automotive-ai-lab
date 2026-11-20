@@ -1,6 +1,6 @@
 # Automotive AI Lab: Project Progress Summary
 
-**Last updated:** 20 Nov 2026 · **Latest code commit:** `152ae2d` (Fix at-risk limit overflow with bigint cast and upper bound) · **Tests:** 743 passing in CI · **CI:** passing on `main`
+**Last updated:** 20 Nov 2026 · **Latest code commit:** `0e78f5f` (Add monthly vehicle model performance API) · **Tests:** 779 passing in CI · **CI:** passing on `main`
 **Repository:** https://github.com/PRASHANTAPAUDEL24/automotive-ai-lab
 **Author:** Prashanta Paudel
 
@@ -15,7 +15,7 @@ The project builds a data and analytics foundation for AI-powered automotive dea
 - Dealer sales and inventory analytics, implemented twice (pandas and PostgreSQL) and cross-checked against each other.
 - Five reusable PostgreSQL views, including the dealer-grain `dealer_monthly_performance`, the shared regional/network `monthly_performance_rollup`, and the `dealer_scorecard` view with four business-risk flags.
 - A safe, parameterized Python query layer (`src/db.py`).
-- A FastAPI service with eleven endpoints:
+- A FastAPI service with twelve endpoints:
 
 | Endpoint | Behaviour |
 |---|---|
@@ -30,12 +30,13 @@ The project builds a data and analytics foundation for AI-powered automotive dea
 | `GET /performance/trend` | Network-wide monthly sales and target history, oldest first. `achievement_pct` is weighted from total units divided by total target. Optional inclusive `start` and `end` filters use strict `YYYY-MM`; no bounds returns all 24 months. A valid window with no rows returns `[]`; the network has no not-found state; malformed or reversed bounds return 422. |
 | `GET /performance/ranking` | Ranks dealers for one required `month=YYYY-MM` by raw, unrounded achievement percentage. Dealers with missing or zero targets are excluded before ranking; ties are broken by `dealer_id`, ranks are contiguous, and optional `limit` is bounded from 1 through `2**63 - 1` while preserving global ranks. A malformed month or invalid limit returns 422, a well-formed month with no data returns 404, and an existing month with no rankable dealers returns `200 []`. |
 | `GET /performance/regions` | Compares all five regions for one required `month=YYYY-MM`, ordered by region. Achievement is weighted from regional total units divided by regional total target. A missing dealer target keeps the region in the response with null target and achievement; a zero regional target remains `0` with null achievement. Malformed months return 422 and well-formed months with no data return 404. |
+| `GET /performance/models` | Returns one row per vehicle model with sales rows for one required `month=YYYY-MM`, ordered by units sold descending with model as the deterministic tie-break. Includes segment, MSRP, total units sold, share of network units, and unit-weighted average sale price using only priced units. Models with no sales rows for the month are omitted; models with rows but zero total units remain present. Network-zero share and zero priced-unit average are null where undefined. Malformed months return 422 and well-formed months with no sales data return 404. |
 
 - Pydantic response models (`Dealer`: 17 fields, 5 nullable; `RegionSummary`: region plus 5 count fields; `RankedDealer`: `Dealer` plus `rank` and `risk_tier`; `MonthlyPerformance`: 6 fields, 2 nullable; `RegionMonthlyPerformance`: 6 fields, 2 nullable; `NetworkMonthlyPerformance`: 5 fields, 2 nullable; `RankedMonthlyPerformance`: 7 required non-null fields) that validate API output and drive the schemas shown in `/docs`.
-- A pytest suite of 743 tests. Day 28 added 8 focused `/dealers/at-risk` large-limit regression tests covering three valid values above the former 32-bit ceiling, DB/API parity with the unbounded ranking, the one-above-`bigint` 422 boundary, and the SQL `bigint` cast contract. Day 27 added 12 direct `monthly_performance_rollup` view-contract tests, 1 consumer-contract test, 1 deterministic load-script statistics guard and 1 JIT-aware rollup plan-cost guard. The shared strict ASCII `YYYY-MM` contract continues to cover nine FastAPI month parameters. On the local PostgreSQL build the JIT-specific guard skips because JIT is unavailable; CI has JIT available and all 743 tests pass there.
+- A pytest suite of 779 tests. Day 29 added 19 database tests and 17 API/model tests for monthly vehicle-model performance, with database mutation testing killing all 10 non-equivalent mutants (one equivalent survivor) and API/model mutation testing killing all 13 (one equivalent raw-record survivor). Day 28 added 8 focused `/dealers/at-risk` large-limit regression tests covering three valid values above the former 32-bit ceiling, DB/API parity with the unbounded ranking, the one-above-`bigint` 422 boundary, and the SQL `bigint` cast contract. Day 27 added 12 direct `monthly_performance_rollup` view-contract tests, 1 consumer-contract test, 1 deterministic load-script statistics guard and 1 JIT-aware rollup plan-cost guard. The shared strict ASCII `YYYY-MM` contract continues to cover nine FastAPI month parameters. On the local PostgreSQL build the JIT-specific guard skips because JIT is unavailable; CI has JIT available and all 779 tests pass there.
 - GitHub Actions CI on every push and pull request: a fresh `ubuntu-24.04` runner with a `postgres:18.6` service rebuilds the database from the SQL scripts, then runs Black, Ruff and the full test suite.
 
-**Next step:** Continue the FastAPI layer with the next dealer-analytics endpoint, keeping the same test-first, contract-first workflow.
+**Next step:** Continue with the next dealer-analytics capability, preserving the same test-first, contract-first workflow now established across dealer, regional, network and vehicle-model performance.
 
 **Architecture**
 
@@ -130,8 +131,10 @@ Flags use unrounded values. Rounding is for display only.
 
 - Sales and target performance are month-aware across SQL, Python and FastAPI through `dealer_monthly_performance`, `GET /performance?month=YYYY-MM`, `GET /dealers/{dealer_id}/performance`, `GET /regions/{region}/performance`, `GET /performance/trend`, `GET /performance/ranking?month=YYYY-MM` and `GET /performance/regions?month=YYYY-MM`, covering October 2024 through September 2026.
 - `inventory_supply`, `dealer_scorecard` and the endpoints built on them (`GET /dealers`, `GET /dealers/{dealer_id}`, `GET /dealers/at-risk` and `GET /regions/summary`) remain fixed to September 2026. Inventory is a single snapshot as of September 30, 2026, so historical inventory and risk analysis is not yet month-aware.
-- `GET /performance` returns all 40 dealers for one month, `GET /dealers/{dealer_id}/performance` returns one dealer's monthly history, `GET /regions/{region}/performance` returns weighted regional monthly history, `GET /performance/trend` returns weighted network-wide monthly history, `GET /performance/ranking` ranks rankable dealers for one required month, and `GET /performance/regions` compares all five regions for one required month. Dealer, regional and network history accept optional inclusive `start` and `end` bounds; ranking accepts an optional bounded `limit`. Filtering is month-precision only (`YYYY-MM`); daily or arbitrary-date filtering is not implemented.
-- The strict ASCII `YYYY-MM` rule is centralized in `src/db.py` as `MONTH_FORMAT`. `MONTH_QUERY_PATTERN` and the compiled `_MONTH_RE` are derived from that one value, and all nine FastAPI month parameters use the shared query pattern. Required-month and optional-bound validators still intentionally keep their different existing error messages.
+- `GET /performance` returns all 40 dealers for one month, `GET /dealers/{dealer_id}/performance` returns one dealer's monthly history, `GET /regions/{region}/performance` returns weighted regional monthly history, `GET /performance/trend` returns weighted network-wide monthly history, `GET /performance/ranking` ranks rankable dealers for one required month, `GET /performance/regions` compares all five regions for one required month, and `GET /performance/models` returns network vehicle-model performance for one required month. Dealer, regional and network history accept optional inclusive `start` and `end` bounds; ranking accepts an optional bounded `limit`. Filtering is month-precision only (`YYYY-MM`); daily or arbitrary-date filtering is not implemented.
+- `GET /performance/models` returns only vehicle models that have at least one `sales_monthly` row for the requested month. A model with rows but zero total units remains in the response; a catalog model with no sales rows for that month is omitted.
+- The `/performance/models` route independently pins the shared strict ASCII month pattern through its OpenAPI/API tests, but it has not yet been added to the centralized month-format contract test, which currently covers nine FastAPI month parameters.
+- The strict ASCII `YYYY-MM` rule is centralized in `src/db.py` as `MONTH_FORMAT`. `MONTH_QUERY_PATTERN` and the compiled `_MONTH_RE` are derived from that one value. Ten FastAPI month parameters now use the shared query pattern; the centralized month-format contract enumerates nine of them, while `/performance/models` independently pins the same pattern through its focused OpenAPI/API tests. Required-month and optional-bound validators still intentionally keep their different existing error messages.
 - `GET /performance/ranking` excludes dealers whose achievement is undefined because the target is missing or zero. Ranking uses raw, unrounded achievement highest-first with `dealer_id` as the deterministic tie-break. `ROW_NUMBER()` gives contiguous positional ranks; the optional `limit` is applied after ranking and capped at PostgreSQL bigint maximum (`2**63 - 1`).
 - `get_monthly_dealer_ranking()` performs two database reads: one to establish that the requested month exists and one to return the rankable rows. With the project's static analytical dataset this is harmless, but under concurrent writes the two reads could theoretically observe different states unless they share a transaction or snapshot.
 - `GET /performance/ranking` currently supports highest-achievement-first ordering only; there is no ascending/descending sort-direction parameter.
@@ -211,6 +214,7 @@ Flags use unrounded values. Rounding is for display only.
 - **Centralize an aggregation rule at the grain where it is defined.** The regional-history, network-trend and cross-region snapshot queries repeated the same weighted-achievement and missing-target logic. A single `GROUPING SETS` view now produces both regional and network grains directly from dealer-month rows, so the business rule is defined once while each consumer only filters and orders its required grain.
 - **Fresh data still needs planner statistics.** A database can be logically correct yet perform badly immediately after loading. The Day 27 rollup exposed this in CI: adding `ANALYZE;` after the load reduced the representative estimated plan cost from about 584k to 12.9k and restored pytest from 84–124 seconds to 9.21 seconds.
 - **Pin external numeric boundaries independently of production constants.** The Day 28 tests use the PostgreSQL signed-`bigint` boundary `2**63 - 1` directly rather than deriving it from `db.MAX_LIMIT`, so an accidental change to the production constant cannot move the test boundary with the bug.
+- **Test observable contracts rather than forcing an internal implementation.** The Day 29 API mutation replacing `to_records()` with raw `to_dict("records")` survived. A direct Pydantic probe showed the two paths are behaviorally equivalent at this response boundary because NaN is serialized as JSON null. The test therefore pins the HTTP null contract rather than requiring a particular conversion helper.
 
 ---
 
@@ -290,11 +294,54 @@ Commit `152ae2d` (Fix at-risk limit overflow with bigint cast and upper bound) c
 
 A block-scoped mutation harness then verified three regression protections. Changing the SQL cast back to `integer` was killed by 7 of the 8 focused tests; removing `le=MAX_LIMIT` was killed by the one-above-maximum 422 test; and changing the bound to `MAX_LIMIT - 1` was killed by the valid `2**63 - 1` API case. Only pytest exit code 1 counted as a valid kill, both source files were restored byte-for-byte by SHA, and stale bytecode was cleared between runs. Final mutation result: 3 of 3 killed. CI #26 passed all 743 tests in 6.32 seconds and completed the workflow in about 56 seconds.
 
+**Day 29: Monthly vehicle-model performance.** Started with the database layer and
+defined one row per vehicle model that has `sales_monthly` rows for the requested
+month. The query joins `vehicle_models` for `segment` and `msrp`, sums all units,
+computes each model's raw share of network units, and calculates unit-weighted
+`avg_sale_price` using only rows with a non-null price. Models with no rows are
+omitted; a model with rows but zero total units remains present. A zero
+network-unit denominator produces null share, a zero priced-unit denominator
+produces null average price, malformed months raise `InvalidMonthError`, and a
+well-formed month with no sales rows raises `MonthNotFoundError`.
+
+The database phase added 19 tests covering independent CSV recomputation, network
+rollup parity, catalog attributes, deterministic ordering, weighted-price edge
+cases, zero-unit and all-null-price states, omitted models, month validation and
+not-found handling. A transactional fixture proved that units from null-price rows
+remain in total units but are excluded from the weighted-price denominator. The
+mutation campaign killed all 10 non-equivalent mutants. The only survivor was the
+behaviorally equivalent removal of the numerator's null-price filter, because
+`avg_sale_price * units_sold` is already null when price is null and PostgreSQL
+`SUM` ignores null values. The database layer was committed as `9084c4e`; CI #28
+passed all 762 tests.
+
+Next, wrote the API tests before adding the six-field `ModelMonthlyPerformance`
+response model and `GET /performance/models?month=YYYY-MM`. The endpoint uses the
+shared strict ASCII month pattern, translates `InvalidMonthError` to 422 and
+`MonthNotFoundError` to 404, validates response output and returns normalized
+records. Tests cover database parity, exact JSON types, OpenAPI field/nullability
+and month-pattern contracts, malformed and missing months, explicit exception
+translation, invalid response rejection, nullable serialization, a rolled-back
+real-database zero-unit/null-price state and NaN-to-JSON-null behavior. The
+endpoint's focused API tests pin the shared month pattern directly; the centralized
+month-format contract remains at nine FastAPI parameters. The focused API suite
+reached 17 passing tests and the full local suite reached 778 passed with the
+existing JIT-only test skipped.
+
+The API/model mutation campaign used a green baseline control, block-scoped source
+mutations, strict pytest exit-code handling, byte-for-byte restoration and SHA-256
+verification. It killed all 13 non-equivalent mutants. The sole survivor replaced
+`to_records()` with raw pandas `to_dict("records")`; a direct probe confirmed this
+is behaviorally equivalent at this response boundary because
+`ModelMonthlyPerformance`/Pydantic serializes NaN as JSON null. The API/model layer
+was committed as `0e78f5f`. CI #29 passed Black, Ruff and all 779 tests in 5.16
+seconds.
+
 ---
 
 ## 9. Roadmap
 
-**Next:** Continue the FastAPI layer with the next dealer-analytics endpoint, preserving the existing validation, response-model and regression-testing conventions.
+**Next:** Continue with the next dealer-analytics capability, preserving the existing validation, response-model, test-first and mutation-testing conventions.
 
 **Then:**
 
