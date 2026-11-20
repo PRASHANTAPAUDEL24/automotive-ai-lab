@@ -94,6 +94,29 @@ class MonthlyPerformance(BaseModel):
     )
 
 
+class ModelMonthlyPerformance(BaseModel):
+    """Network sales performance for one vehicle model and month."""
+
+    model: str
+    segment: str
+    msrp: int
+    units_sold: int
+
+    share_pct: float | None = Field(
+        description=(
+            "Share of network units sold for the requested month. "
+            "Null when total network units are zero."
+        )
+    )
+
+    avg_sale_price: float | None = Field(
+        description=(
+            "Unit-weighted average sale price using only rows with "
+            "a non-null price. Null when priced units total zero."
+        )
+    )
+
+
 class RankedMonthlyPerformance(BaseModel):
     """One dealer's ranked performance for a required month."""
 

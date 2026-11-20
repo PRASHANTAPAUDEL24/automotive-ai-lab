@@ -19,6 +19,7 @@ from db import (
     get_at_risk_dealers,
     get_dealer,
     get_dealer_performance_history,
+    get_model_performance,
     get_monthly_dealer_ranking,
     get_monthly_performance,
     get_network_performance_history,
@@ -30,6 +31,7 @@ from db import (
 )
 from models import (
     Dealer,
+    ModelMonthlyPerformance,
     MonthlyPerformance,
     NetworkMonthlyPerformance,
     RankedDealer,
@@ -278,6 +280,35 @@ def regional_performance_snapshot(
         ) from error
 
     return to_records(snapshot)
+
+
+@app.get(
+    "/performance/models",
+    response_model=list[ModelMonthlyPerformance],
+)
+def model_performance(
+    month: str = Query(
+        ...,
+        pattern=MONTH_QUERY_PATTERN,
+        description="Month in YYYY-MM format.",
+    ),
+):
+    """Return network sales performance by vehicle model for one month."""
+
+    try:
+        performance = get_model_performance(month)
+    except InvalidMonthError as error:
+        raise HTTPException(
+            status_code=422,
+            detail=str(error),
+        ) from error
+    except MonthNotFoundError as error:
+        raise HTTPException(
+            status_code=404,
+            detail=str(error),
+        ) from error
+
+    return to_records(performance)
 
 
 @app.get("/performance", response_model=list[MonthlyPerformance])
