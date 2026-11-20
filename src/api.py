@@ -109,7 +109,11 @@ def dealer_performance_history(
 
 @app.get("/dealers/at-risk", response_model=list[RankedDealer])
 def at_risk_dealers(
-    limit: int | None = Query(default=None, ge=1),
+    limit: int | None = Query(
+        default=None,
+        ge=1,
+        le=MAX_LIMIT,
+    ),
 ):
     dealers = get_at_risk_dealers(limit=limit)
     return to_records(dealers)

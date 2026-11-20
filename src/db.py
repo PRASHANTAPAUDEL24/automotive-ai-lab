@@ -233,7 +233,7 @@ def get_at_risk_dealers(limit=None):
             risk_tier
         FROM ranked
         ORDER BY rank
-        LIMIT CAST(:limit AS integer)
+        LIMIT CAST(:limit AS bigint)
         """)
 
     return pd.read_sql(
