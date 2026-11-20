@@ -1,6 +1,6 @@
 # Automotive AI Lab: Project Progress Summary
 
-**Last updated:** 18 Nov 2026 · **Latest code commit:** `bc25b0b` (Add regional performance snapshot API with tests) · **Tests:** 720 passing · **CI:** passing on `main`
+**Last updated:** 20 Nov 2026 · **Latest code commit:** `cbd3dd4` (Analyze tables after the load so rollup plans stay cheap) · **Tests:** 735 passing in CI · **CI:** passing on `main`
 **Repository:** https://github.com/PRASHANTAPAUDEL24/automotive-ai-lab
 **Author:** Prashanta Paudel
 
@@ -13,7 +13,7 @@ The project builds a data and analytics foundation for AI-powered automotive dea
 **What works today**
 
 - Dealer sales and inventory analytics, implemented twice (pandas and PostgreSQL) and cross-checked against each other.
-- Four reusable PostgreSQL views, from a monthly `dealer_monthly_performance` view to a `dealer_scorecard` view with four business-risk flags.
+- Five reusable PostgreSQL views, including the dealer-grain `dealer_monthly_performance`, the shared regional/network `monthly_performance_rollup`, and the `dealer_scorecard` view with four business-risk flags.
 - A safe, parameterized Python query layer (`src/db.py`).
 - A FastAPI service with eleven endpoints:
 
@@ -32,17 +32,17 @@ The project builds a data and analytics foundation for AI-powered automotive dea
 | `GET /performance/regions` | Compares all five regions for one required `month=YYYY-MM`, ordered by region. Achievement is weighted from regional total units divided by regional total target. A missing dealer target keeps the region in the response with null target and achievement; a zero regional target remains `0` with null achievement. Malformed months return 422 and well-formed months with no data return 404. |
 
 - Pydantic response models (`Dealer`: 17 fields, 5 nullable; `RegionSummary`: region plus 5 count fields; `RankedDealer`: `Dealer` plus `rank` and `risk_tier`; `MonthlyPerformance`: 6 fields, 2 nullable; `RegionMonthlyPerformance`: 6 fields, 2 nullable; `NetworkMonthlyPerformance`: 5 fields, 2 nullable; `RankedMonthlyPerformance`: 7 required non-null fields) that validate API output and drive the schemas shown in `/docs`.
-- A pytest suite of 720 tests. Day 26 added 89 database/query cross-region snapshot tests, 17 snapshot API cases and 1 additional parameterized month-format contract case. The shared strict ASCII `YYYY-MM` contract now covers nine FastAPI month parameters.
+- A pytest suite of 735 tests. Day 27 added 12 direct `monthly_performance_rollup` view-contract tests, 1 consumer-contract test, 1 deterministic load-script statistics guard and 1 JIT-aware rollup plan-cost guard. The shared strict ASCII `YYYY-MM` contract continues to cover nine FastAPI month parameters. On the local PostgreSQL build the JIT-specific guard skips because JIT is unavailable; CI has JIT available and all 735 tests pass there.
 - GitHub Actions CI on every push and pull request: a fresh `ubuntu-24.04` runner with a `postgres:18.6` service rebuilds the database from the SQL scripts, then runs Black, Ruff and the full test suite.
 
-**Next step:** Day 27: extract the repeated regional/network/snapshot weighted-achievement and missing-target rules into a shared SQL view or reusable query structure, with regression tests proving the three existing interfaces remain unchanged.
+**Next step:** Fix the legacy `/dealers/at-risk` `limit` overflow by changing the PostgreSQL cast to `bigint`, adding the matching FastAPI maximum bound, and covering the regression with database and API tests.
 
 **Architecture**
 
 ```
 Synthetic CSV data
   -> PostgreSQL tables
-  -> PostgreSQL analytical views
+  -> PostgreSQL analytical views, including monthly_performance_rollup
   -> reusable Python database layer (src/db.py)
   -> FastAPI endpoints (src/api.py)
   -> pytest integration tests
@@ -136,7 +136,9 @@ Flags use unrounded values. Rounding is for display only.
 - `get_monthly_dealer_ranking()` performs two database reads: one to establish that the requested month exists and one to return the rankable rows. With the project's static analytical dataset this is harmless, but under concurrent writes the two reads could theoretically observe different states unless they share a transaction or snapshot.
 - `GET /performance/ranking` currently supports highest-achievement-first ordering only; there is no ascending/descending sort-direction parameter.
 - `GET /dealers/at-risk` casts `limit` to a 32-bit integer, so a value above 2,147,483,647 raises PostgreSQL `NumericValueOutOfRange` and returns 500. FastAPI currently validates only the minimum; this remains a separate legacy limitation from the Day 25 ranking endpoint.
-- Regional aggregation lives inline in `get_region_performance_history()`, `get_network_performance_history()` and `get_regional_performance_snapshot()` in `src/db.py`. Day 26 deliberately introduced the third inline implementation so the new interface could be pinned independently before refactoring. All three implementations are covered by cross-checks and mutation tests; Day 27 will evaluate a shared SQL view or reusable query structure behind the existing tested interfaces.
+- Regional and network weighted performance now share one PostgreSQL `monthly_performance_rollup` view built with `GROUPING SETS`; the missing-target, zero-target and weighted-achievement rules are defined once in SQL instead of repeated by the three Python consumers. The view intentionally contains two grains: non-NULL `region` rows represent `(region, month)` results, while `region IS NULL` represents the whole-network `(month)` result. That convention relies on `dealers.region` remaining `NOT NULL`, and each consumer must filter the intended grain explicitly.
+- Region-specific consumers filter the rollup result after aggregation; the implementation does not rely on PostgreSQL pushing `WHERE region = ...` beneath the `GROUPING SETS` aggregate. With the current 960 dealer-month base rows, the additional aggregation work is negligible, but the design should be revisited if the dataset grows substantially.
+- Fresh database loads now end with `ANALYZE;` so planner statistics exist before queries run. Without statistics, the representative regional rollup query was estimated at about 584,068 cost; after `ANALYZE` the estimate fell to about 12,917, below PostgreSQL's default `jit_above_cost` of 100,000. The earlier CI slowdown is consistent with a JIT-enabled server treating the un-analyzed rollup query as an expensive compilation candidate; JIT time was not measured directly.
 - Region matching is exact and case-sensitive. An unknown region returns 404 on `GET /regions/{region}/performance`, while `GET /dealers?region=` returns an empty list for an unknown region. Both behaviors are tested, but the convention is not unified.
 - The regional-history, network-trend and cross-region snapshot NULL and zero-target rules are covered by automated tests that run the real queries inside rolled-back transactions. The tests temporarily remove a target or set the relevant targets to zero, execute the real aggregation against that transaction, then roll it back and verify the committed data is restored. The committed dataset itself has no such rows. API-level null serialization is covered both with deterministic stubbed frames and, for the Day 26 snapshot, a real rolled-back missing-target transaction.
 - The range filter compares `YYYY-MM` text in SQL. That sorts chronologically only because both bounds are validated first, so the comparison must be revisited if the `month` column ever changes type or format.
@@ -206,6 +208,8 @@ Flags use unrounded values. Rounding is for display only.
 - **Synthetic edge cases are valuable when committed data has no natural example.** The real dataset has no pair whose raw achievement order differs while the displayed one-decimal values tie. The behavioral evidence that ranking uses raw rather than rounded achievement therefore comes from a deliberately constructed transactional fixture; the SQL contract also pins the raw expression structurally.
 - **Rank before limiting when ranks are part of the contract.** The query assigns `ROW_NUMBER()` over the full eligible month first, then applies the optional limit, so a limited response preserves global ranks instead of recomputing a local ranking.
 - **An empty ranking is not the same as a missing month.** Month existence is checked separately from rankability. An existing month with all targets missing or zero returns `200 []`, while a well-formed month with no data raises `MonthNotFoundError` and returns 404.
+- **Centralize an aggregation rule at the grain where it is defined.** The regional-history, network-trend and cross-region snapshot queries repeated the same weighted-achievement and missing-target logic. A single `GROUPING SETS` view now produces both regional and network grains directly from dealer-month rows, so the business rule is defined once while each consumer only filters and orders its required grain.
+- **Fresh data still needs planner statistics.** A database can be logically correct yet perform badly immediately after loading. The Day 27 rollup exposed this in CI: adding `ANALYZE;` after the load reduced the representative estimated plan cost from about 584k to 12.9k and restored pytest from 84–124 seconds to 9.21 seconds.
 
 ---
 
@@ -265,15 +269,28 @@ Flags use unrounded values. Rounding is for display only.
 
 Next, wrote the API tests before exposing `GET /performance/regions?month=YYYY-MM`. The red checkpoints were 1 failed / 10 passed in the shared month-format contract, 16 failed / 1 passed in the new endpoint file, and 17 failed / 703 passed in the full suite. The endpoint reuses the existing six-field `RegionMonthlyPerformance` model, requires the shared strict month pattern, translates `InvalidMonthError` to 422 and `MonthNotFoundError` to 404, normalizes results through `to_records()`, preserves integer JSON types, and keeps unrelated failures such as a missing `DATABASE_URL` at 500. API tests include OpenAPI model reuse, exact field/nullability contracts, mixed-null pandas serialization, a real rolled-back missing-target state, invalid response rejection and regression coverage for the existing performance routes. The shared month-format contract expanded from eight to nine FastAPI parameters. The green suite reached 720 passing tests. A hardened API mutation harness cleared bytecode between runs, enforced a timeout, treated pytest collection errors separately, restored `src/api.py` by SHA256 after every mutant, and killed 19 of 19 mutants with 0 survivors and 0 errors. The API layer was committed as `bc25b0b`. CI #18 for the database commit and CI #19 for the API commit both passed on `main`; CI #19 rebuilt PostgreSQL, passed Black and Ruff, and ran all 720 tests successfully. The three weighted regional/network/snapshot aggregations intentionally remain inline through Day 26 so Day 27 can extract the shared SQL logic behind already-pinned interfaces.
 
+**Day 27: Shared monthly performance rollup.** Chose one PostgreSQL `monthly_performance_rollup` view using `GROUPING SETS` rather than chained aggregate views. The shared view produces both `(region, month)` rows and whole-network `(month)` rows directly from `dealer_monthly_performance`, with `region IS NULL` identifying the network grain because `dealers.region` is `NOT NULL`. This centralizes the weighted-achievement, missing-target and zero-target rules in one SQL definition. A chained-view design was rejected because aggregating already-summed `bigint` values again would promote PostgreSQL `SUM(bigint)` to `numeric`, require additional casts to preserve the existing integer contracts, and re-express the weighted rule instead of truly centralizing it.
+
+The first Day 27 commit, `54623e3` (Add shared monthly performance rollup view with tests), added the view and 12 direct contract tests covering exact columns and PostgreSQL types, 120 regional rows plus 24 network rows, regional/network equivalence, rolled-back missing- and zero-target states, and the single `GROUPING SETS` definition. The suite reached 732 passing tests and CI #21 passed.
+
+Before changing any consumer, a provenance-stamped baseline captured all 5 regions across 6 window variants, the same 6 network windows, all 24 snapshot months, 7 error paths, and baseline, missing-target and zero-target edge states. After each consumer was moved to the shared view, exact before/after comparison preserved DataFrame values, ordering and dtypes across every captured case.
+
+The second Day 27 feature commit, `827edbd` (Refactor performance queries to use shared rollup view), changed `get_region_performance_history()`, `get_network_performance_history()` and `get_regional_performance_snapshot()` into filtered reads of `monthly_performance_rollup`. A consumer-contract test requires all three queries to read from the shared view and forbids `SUM(` and `GROUP BY` in their consumer SQL; existing structural tests continue to pin the required grain filters and deterministic ordering. The suite reached 733 passing tests and CI #22 passed on `main`.
+
+The final Day 27 mutation campaign exercised 16 mutants. All 14 deployable non-equivalent mutants were killed, covering both missing-target CASE branches, dealer counting, zero-target handling, the `bigint` cast, regional and network grouping grains, the target sum, all three grain filters and all three ordering contracts. Two survivors were verified equivalent rather than treated as test gaps: changing `100.0` to `100` produced zero differing region-month results in a direct SQL comparison, and changing `JOIN dealers` to `LEFT JOIN dealers` produced zero unmatched dealer-month rows and zero differences across the complete rollup when compared in both directions with `EXCEPT`. Final result: 14 of 14 non-equivalent mutants killed, 2 verified equivalent survivors, 0 unresolved survivors and 0 errors.
+
+CI #22 then exposed a performance issue that did not reproduce locally. Its original run took 86.02 seconds in pytest and its re-run 123.79 seconds, and CI #23, which added `--durations=15` for observability in commit `e989d31` (Show the slowest tests in CI), took 84.00 seconds. The same suite took about 9 seconds locally. Investigation showed that a freshly loaded database without planner statistics estimated the representative regional rollup query at about 584,068 cost, above the default `jit_above_cost` threshold of 100,000. Running `ANALYZE` reduced the estimate to about 12,917.
+
+Commit `cbd3dd4` (Analyze tables after the load so rollup plans stay cheap) therefore added `ANALYZE;` after the final `\copy` in `sql/02_load.sql`, a deterministic source-level regression test proving that the load ends with analysis, and a JIT-aware plan-cost guard that runs only where PostgreSQL JIT is enabled and available. The source guard was mutation-tested by temporarily removing `ANALYZE;`, which made the test fail exactly as intended. A fresh local database ran 734 tests with the JIT-only guard skipped in 8.50 seconds, and its analyzed rollup plan cost was 12,916.93. CI #24 had JIT available, ran the guard instead of skipping it, passed all 735 tests in 9.21 seconds, and completed the full workflow in about 1 minute 2 seconds. The before/after result strongly supports missing planner statistics on the fresh CI database as the dominant contributor to the Day 27 test slowdown.
+
 ---
 
 ## 9. Roadmap
 
-**Next:** Day 27: extract the repeated regional/network/snapshot weighted-achievement and missing-target logic into a shared SQL view or reusable query structure, with regression tests proving unchanged behavior across all three interfaces.
+**Next:** Fix the legacy `/dealers/at-risk` `limit` overflow by using a PostgreSQL `bigint` cast and matching FastAPI maximum bound, with regression tests.
 
 **Then:**
 
-- Fix the legacy `/dealers/at-risk` `limit` overflow by using a PostgreSQL bigint cast and matching FastAPI maximum bound, with regression tests
 - Richer FastAPI endpoints
 - Additional sales and inventory queries, with more automated API tests
 - A full lock file for transitive dependencies, plus branch protection for CI

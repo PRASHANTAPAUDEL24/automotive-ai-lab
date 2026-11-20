@@ -59,6 +59,7 @@ The dataset includes:
 - [x] Day 24: Network-wide monthly performance trend (`GET /performance/trend`) with weighted achievement, inclusive month ranges, nullable target handling, response validation, and tests
 - [x] Day 25: Month-aware dealer performance ranking (`GET /performance/ranking`) with deterministic raw-achievement ranking, bounded limits, non-null ranked responses, mutation testing, and CI
 - [x] Day 26: Cross-region monthly performance snapshot (`GET /performance/regions?month=YYYY-MM`) with weighted achievement, missing/zero-target handling, shared response-model reuse, mutation testing, and CI
+- [x] Day 27: Shared monthly performance rollup using PostgreSQL `GROUPING SETS`, with regional/network grain contracts, exact before/after regression comparison, planner-statistics protection, mutation testing, and CI
 - [ ] Week 3: FastAPI
 - [ ] Week 4: Automotive Dealer Analytics API
 - [ ] Later: LLM APIs, RAG, agents, Docker, Azure
@@ -125,7 +126,7 @@ psql -P pager=off automotive_ai_lab -f sql/day6_inventory_aging.sql
 psql -P pager=off automotive_ai_lab -f sql/day7_dealer_scorecard.sql
 ```
 
-`sql/03_views.sql` now creates `dealer_monthly_performance`, with one row per dealer and month for sales and target performance. The existing `dealer_performance` view remains a September 2026 compatibility view so the downstream inventory and scorecard logic is unchanged.
+`sql/03_views.sql` now creates `dealer_monthly_performance`, with one row per dealer and month for sales and target performance, plus `monthly_performance_rollup`, which uses `GROUPING SETS` to produce both regional `(region, month)` rows and whole-network `(month)` rows from one weighted-aggregation definition. The rollup contains 120 regional rows plus 24 network rows; `region IS NULL` identifies the network grain because `dealers.region` is `NOT NULL`. `sql/02_load.sql` now finishes with `ANALYZE;` so fresh databases have planner statistics before these queries run. The existing `dealer_performance` view remains a September 2026 compatibility view so the downstream inventory and scorecard logic is unchanged.
 
 Export the SQL flags and compare them with the Day 4 pandas scorecard. Run `src/day4_dealer_scorecard.py` first so `data/dealer_scorecard.csv` exists.
 
@@ -217,7 +218,7 @@ If the data layer ever returns a value that does not match the model, the API re
 
 ## Testing
 
-The pytest suite covers the reusable PostgreSQL query layer, FastAPI endpoints, response models, shared validation contracts and regression behavior.
+The pytest suite covers the reusable PostgreSQL query layer, FastAPI endpoints, response models, shared validation contracts and regression behavior. Day 27 added 12 direct `monthly_performance_rollup` view-contract tests, 1 consumer-contract test, 1 load-script statistics guard and 1 JIT-aware plan-cost guard. CI runs all 735 tests; the JIT-specific guard skips locally when PostgreSQL JIT is unavailable.
 
 The PostgreSQL database, tables, data, and views must be built before running the integration tests.
 
@@ -317,7 +318,9 @@ The cross-check is now automated: `tests/test_monthly_performance.py` recomputes
 - `inventory_supply`, `dealer_scorecard` and the endpoints built on them (`GET /dealers`, `GET /dealers/{dealer_id}`, `GET /dealers/at-risk` and `GET /regions/summary`) remain fixed to September 2026. Inventory is a single snapshot as of September 30, 2026, so historical inventory and risk analysis is not yet month-aware.
 - Dealer, regional and network history range filters are limited to month precision (`YYYY-MM`); daily or arbitrary-date filtering is not implemented.
 - The strict ASCII `YYYY-MM` rule is centralized in `src/db.py` as `MONTH_FORMAT`; `MONTH_QUERY_PATTERN` and the compiled database regex are derived from it. All nine FastAPI month parameters use the shared query pattern. Required-month and optional-bound validators still keep their different existing error messages by design.
-- `GET /dealers/at-risk` casts `limit` to a 32-bit integer, so a value above 2,147,483,647 raises a database `NumericValueOutOfRange` error and returns 500. FastAPI currently validates only the minimum; the separate fix is a `bigint` cast plus a maximum bound, with tests.
+- Regional history, network trend and cross-region snapshots now share `monthly_performance_rollup`, a single `GROUPING SETS` definition for weighted achievement and missing/zero-target handling. The view intentionally contains both regional and network grains, so consumers must filter them explicitly; `region IS NULL` means the whole network and relies on `dealers.region` remaining `NOT NULL`. Region-specific filtering is applied to the rollup result, and the implementation does not rely on PostgreSQL pushing that predicate beneath the aggregate. At the current 960 dealer-month base rows, the extra aggregation work is negligible.
+- Fresh loads explicitly run `ANALYZE;` after the final `\copy`. Without planner statistics, the representative rollup query's estimated cost was about 584k; after analysis it fell to about 12.9k. The earlier CI slowdown is consistent with a JIT-enabled server treating the un-analyzed rollup query as an expensive compilation candidate; JIT time was not measured directly.
+- `GET /dealers/at-risk` casts `limit` to a 32-bit integer, so a value above 2,147,483,647 raises a database `NumericValueOutOfRange` error and returns 500. FastAPI currently validates only the minimum; the next fix is a `bigint` cast plus a matching maximum bound, with regression tests.
 - The at-risk ranking order (risk tier, then months of supply) is a prioritization heuristic, not a validated predictive metric. Within the sales-risk-only tier, months of supply is a weak signal because all of those dealers are under 3.2 months.
 
 ## Planned Projects
