@@ -295,6 +295,76 @@ def get_monthly_performance(month):
     return performance
 
 
+def get_model_performance(month):
+    """
+    Return network sales performance aggregated by vehicle model for one month.
+
+    units_sold includes all sales rows. share_pct is each model's share of
+    total network units and is NULL when network units are zero.
+
+    avg_sale_price is weighted by units using only rows with a non-NULL
+    avg_sale_price and is NULL when the priced-unit denominator is zero.
+
+    Models with no sales_monthly rows for the requested month are omitted.
+    A well-formed month with no sales rows raises MonthNotFoundError.
+    """
+    _validate_month(month)
+
+    query = text("""
+        WITH model_sales AS (
+            SELECT
+                sm.model,
+                vm.segment,
+                vm.msrp,
+                SUM(sm.units_sold) AS units_sold,
+                SUM(sm.avg_sale_price * sm.units_sold)
+                    FILTER (WHERE sm.avg_sale_price IS NOT NULL)
+                    / NULLIF(
+                        SUM(sm.units_sold)
+                            FILTER (WHERE sm.avg_sale_price IS NOT NULL),
+                        0
+                    ) AS avg_sale_price
+            FROM sales_monthly sm
+            JOIN vehicle_models vm
+                ON vm.model = sm.model
+            WHERE sm.month = :month
+            GROUP BY
+                sm.model,
+                vm.segment,
+                vm.msrp
+        ),
+        network AS (
+            SELECT
+                SUM(units_sold) AS network_units
+            FROM model_sales
+        )
+        SELECT
+            ms.model,
+            ms.segment,
+            ms.msrp,
+            ms.units_sold,
+            ms.units_sold * 100.0
+                / NULLIF(n.network_units, 0) AS share_pct,
+            ms.avg_sale_price
+        FROM model_sales ms
+        CROSS JOIN network n
+        ORDER BY
+            ms.units_sold DESC,
+            ms.model
+        """)
+
+    performance = pd.read_sql(
+        query,
+        get_engine(),
+        params={"month": month},
+    )
+
+    if performance.empty:
+        raise MonthNotFoundError(f"Month {month} not found")
+
+    return performance
+
+
 def get_monthly_dealer_ranking(month, limit=None):
     """
     Return dealers ranked by monthly achievement percentage.
