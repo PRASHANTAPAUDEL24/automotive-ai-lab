@@ -295,6 +295,111 @@ def get_monthly_performance(month):
     return performance
 
 
+def get_regional_funnel_snapshot(month):
+    """
+    Return one funnel snapshot row per dealer region for one month.
+
+    The query is anchored on dealers so every configured region remains
+    present. Leads/test drives and sales have independent completeness
+    contracts at dealer-month grain:
+
+    - if any dealer in a region lacks a leads_monthly row, regional leads,
+      test drives and all three rates are NULL;
+    - if any dealer in a region lacks a sales dealer-month aggregate,
+      regional units sold and the two sale rates are NULL.
+
+    A real zero value is not treated as missing. Rates are ratios of regional
+    sums and are NULL when their denominator is zero or unavailable.
+
+    Month existence is defined by leads_monthly. A well-formed month with no
+    lead rows raises MonthNotFoundError.
+    """
+    _validate_month(month)
+
+    query = text("""
+        WITH sales_by_dealer AS (
+            SELECT
+                dealer_id,
+                SUM(units_sold) AS units_sold
+            FROM sales_monthly
+            WHERE month = :month
+            GROUP BY dealer_id
+        ),
+        regional AS (
+            SELECT
+                d.region,
+                COUNT(*) AS dealer_count,
+                COUNT(l.dealer_id) AS lead_row_count,
+                COUNT(s.dealer_id) AS sales_row_count,
+                SUM(l.leads) AS leads_sum,
+                SUM(l.test_drives) AS test_drives_sum,
+                CAST(SUM(s.units_sold) AS bigint) AS units_sold_sum
+            FROM dealers d
+            LEFT JOIN leads_monthly l
+                ON l.dealer_id = d.dealer_id
+               AND l.month = :month
+            LEFT JOIN sales_by_dealer s
+                ON s.dealer_id = d.dealer_id
+            GROUP BY d.region
+        )
+        SELECT
+            region,
+            CASE
+                WHEN lead_row_count = dealer_count
+                THEN leads_sum
+                ELSE NULL
+            END AS leads,
+            CASE
+                WHEN lead_row_count = dealer_count
+                THEN test_drives_sum
+                ELSE NULL
+            END AS test_drives,
+            CASE
+                WHEN sales_row_count = dealer_count
+                THEN units_sold_sum
+                ELSE NULL
+            END AS units_sold,
+            CASE
+                WHEN lead_row_count < dealer_count
+                THEN NULL
+                ELSE test_drives_sum * 100.0
+                    / NULLIF(leads_sum, 0)
+            END AS test_drive_rate_pct,
+            CASE
+                WHEN lead_row_count < dealer_count
+                    OR sales_row_count < dealer_count
+                THEN NULL
+                ELSE units_sold_sum * 100.0
+                    / NULLIF(test_drives_sum, 0)
+            END AS drive_to_sale_pct,
+            CASE
+                WHEN lead_row_count < dealer_count
+                    OR sales_row_count < dealer_count
+                THEN NULL
+                ELSE units_sold_sum * 100.0
+                    / NULLIF(leads_sum, 0)
+            END AS lead_to_sale_pct
+        FROM regional
+        WHERE EXISTS (
+            SELECT 1
+            FROM leads_monthly
+            WHERE month = :month
+        )
+        ORDER BY region
+        """)
+
+    snapshot = pd.read_sql(
+        query,
+        get_engine(),
+        params={"month": month},
+    )
+
+    if snapshot.empty:
+        raise MonthNotFoundError(f"Month {month} not found")
+
+    return snapshot
+
+
 def get_model_performance(month):
     """
     Return network sales performance aggregated by vehicle model for one month.
