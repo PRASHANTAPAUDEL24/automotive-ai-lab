@@ -25,6 +25,7 @@ from db import (
     get_network_performance_history,
     get_region_performance_history,
     get_region_summary,
+    get_regional_funnel_snapshot,
     get_regional_performance_snapshot,
     get_scorecard,
     to_records,
@@ -36,6 +37,7 @@ from models import (
     NetworkMonthlyPerformance,
     RankedDealer,
     RankedMonthlyPerformance,
+    RegionalFunnel,
     RegionMonthlyPerformance,
     RegionSummary,
 )
@@ -280,6 +282,35 @@ def regional_performance_snapshot(
         ) from error
 
     return to_records(snapshot)
+
+
+@app.get(
+    "/performance/funnel",
+    response_model=list[RegionalFunnel],
+)
+def regional_funnel(
+    month: str = Query(
+        ...,
+        pattern=MONTH_QUERY_PATTERN,
+        description="Month in YYYY-MM format.",
+    ),
+):
+    """Return one lead-funnel row per dealer region for one month."""
+
+    try:
+        funnel = get_regional_funnel_snapshot(month)
+    except InvalidMonthError as error:
+        raise HTTPException(
+            status_code=422,
+            detail=str(error),
+        ) from error
+    except MonthNotFoundError as error:
+        raise HTTPException(
+            status_code=404,
+            detail=str(error),
+        ) from error
+
+    return to_records(funnel)
 
 
 @app.get(

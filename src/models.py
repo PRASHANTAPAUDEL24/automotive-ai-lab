@@ -117,6 +117,46 @@ class ModelMonthlyPerformance(BaseModel):
     )
 
 
+class RegionalFunnel(BaseModel):
+    """Regional lead funnel metrics for one requested month."""
+
+    region: str
+
+    leads: int | None = Field(
+        description="Total leads for the region. Null when regional lead data is incomplete."
+    )
+    test_drives: int | None = Field(
+        description=(
+            "Total test drives for the region. "
+            "Null when regional lead data is incomplete."
+        )
+    )
+    units_sold: int | None = Field(
+        description=(
+            "Total units sold for the region. "
+            "Null when regional sales data is incomplete."
+        )
+    )
+    test_drive_rate_pct: float | None = Field(
+        description=(
+            "Test drives as a percentage of leads using regional sums. "
+            "Null when lead data is incomplete or regional leads are zero."
+        )
+    )
+    drive_to_sale_pct: float | None = Field(
+        description=(
+            "Units sold as a percentage of test drives using regional sums. "
+            "Null when lead or sales data is incomplete or regional test drives are zero."
+        )
+    )
+    lead_to_sale_pct: float | None = Field(
+        description=(
+            "Units sold as a percentage of leads using regional sums. "
+            "Null when lead or sales data is incomplete or regional leads are zero."
+        )
+    )
+
+
 class RankedMonthlyPerformance(BaseModel):
     """One dealer's ranked performance for a required month."""
 
