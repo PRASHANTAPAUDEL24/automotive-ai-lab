@@ -29,6 +29,8 @@ MONTH_PARAMETERS = [
     ("/performance", "month"),
     ("/performance/ranking", "month"),
     ("/performance/regions", "month"),
+    ("/performance/models", "month"),
+    ("/performance/funnel", "month"),
 ]
 
 
