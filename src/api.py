@@ -18,6 +18,7 @@ from db import (
     RegionNotFoundError,
     get_at_risk_dealers,
     get_dealer,
+    get_dealer_funnel_history,
     get_dealer_performance_history,
     get_model_performance,
     get_monthly_dealer_ranking,
@@ -32,6 +33,7 @@ from db import (
 )
 from models import (
     Dealer,
+    DealerMonthlyFunnel,
     ModelMonthlyPerformance,
     MonthlyPerformance,
     NetworkMonthlyPerformance,
@@ -93,6 +95,48 @@ def dealer_performance_history(
     """
     try:
         history = get_dealer_performance_history(
+            dealer_id,
+            start=start,
+            end=end,
+        )
+    except DealerNotFoundError as error:
+        raise HTTPException(
+            status_code=404,
+            detail=str(error),
+        ) from error
+    except (InvalidMonthError, InvalidMonthRangeError) as error:
+        raise HTTPException(
+            status_code=422,
+            detail=str(error),
+        ) from error
+
+    return to_records(history)
+
+
+@app.get(
+    "/dealers/{dealer_id}/funnel",
+    response_model=list[DealerMonthlyFunnel],
+)
+def dealer_funnel_history(
+    dealer_id: int,
+    start: str | None = Query(
+        default=None,
+        pattern=MONTH_QUERY_PATTERN,
+    ),
+    end: str | None = Query(
+        default=None,
+        pattern=MONTH_QUERY_PATTERN,
+    ),
+):
+    """
+    Return monthly lead-funnel history for one dealer.
+
+    Optional start and end bounds are inclusive. Unknown dealers return 404,
+    malformed query bounds return 422 through FastAPI validation, and a
+    reversed range returns 422.
+    """
+    try:
+        history = get_dealer_funnel_history(
             dealer_id,
             start=start,
             end=end,

@@ -94,6 +94,48 @@ class MonthlyPerformance(BaseModel):
     )
 
 
+class DealerMonthlyFunnel(BaseModel):
+    """Lead-funnel performance for one dealer and month."""
+
+    dealer_id: int
+    dealer_name: str
+    month: str
+
+    leads: int | None = Field(
+        ...,
+        description="Monthly leads. Null when the dealer has no lead row.",
+    )
+    test_drives: int | None = Field(
+        ...,
+        description="Monthly test drives. Null when the dealer has no lead row.",
+    )
+    units_sold: int | None = Field(
+        ...,
+        description="Monthly units sold. Null when the dealer has no sales rows.",
+    )
+    test_drive_rate_pct: float | None = Field(
+        ...,
+        description=(
+            "Test drives as a percentage of leads. "
+            "Null when leads are missing or zero."
+        ),
+    )
+    drive_to_sale_pct: float | None = Field(
+        ...,
+        description=(
+            "Units sold as a percentage of test drives. "
+            "Null when sales are missing or test drives are missing or zero."
+        ),
+    )
+    lead_to_sale_pct: float | None = Field(
+        ...,
+        description=(
+            "Units sold as a percentage of leads. "
+            "Null when sales are missing or leads are missing or zero."
+        ),
+    )
+
+
 class ModelMonthlyPerformance(BaseModel):
     """Network sales performance for one vehicle model and month."""
 
