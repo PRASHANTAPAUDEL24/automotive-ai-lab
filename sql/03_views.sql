@@ -5,6 +5,7 @@ DROP VIEW IF EXISTS dealer_scorecard CASCADE;
 DROP VIEW IF EXISTS inventory_supply CASCADE;
 DROP VIEW IF EXISTS dealer_performance CASCADE;
 DROP VIEW IF EXISTS monthly_performance_rollup CASCADE;
+DROP VIEW IF EXISTS dealer_monthly_funnel CASCADE;
 DROP VIEW IF EXISTS dealer_monthly_performance CASCADE;
 
 -- One row per dealer and month. A dealer with no sales in a month gets units_sold = 0.
@@ -44,6 +45,48 @@ LEFT JOIN monthly_sales s
 LEFT JOIN dealer_targets t
     ON d.dealer_id = t.dealer_id
     AND m.month = t.month;
+
+
+-- One row per dealer for every month defined by leads_monthly.
+-- Missing lead or sales rows remain NULL; real zero values remain zero.
+-- Sales are aggregated to dealer-month grain before joining so model rows
+-- cannot multiply lead or test-drive metrics.
+
+CREATE VIEW dealer_monthly_funnel AS
+WITH months AS (
+    SELECT DISTINCT month
+    FROM leads_monthly
+),
+sales_by_dealer AS (
+    SELECT
+        dealer_id,
+        month,
+        SUM(units_sold) AS units_sold
+    FROM sales_monthly
+    GROUP BY
+        dealer_id,
+        month
+)
+SELECT
+    d.dealer_id,
+    m.month,
+    l.leads,
+    l.test_drives,
+    s.units_sold,
+    l.test_drives * 100.0
+        / NULLIF(l.leads, 0) AS test_drive_rate_pct,
+    s.units_sold * 100.0
+        / NULLIF(l.test_drives, 0) AS drive_to_sale_pct,
+    s.units_sold * 100.0
+        / NULLIF(l.leads, 0) AS lead_to_sale_pct
+FROM dealers d
+CROSS JOIN months m
+LEFT JOIN leads_monthly l
+    ON l.dealer_id = d.dealer_id
+    AND l.month = m.month
+LEFT JOIN sales_by_dealer s
+    ON s.dealer_id = d.dealer_id
+    AND s.month = m.month;
 
 
 -- Shared regional and network monthly performance aggregation.
