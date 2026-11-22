@@ -637,6 +637,80 @@ def get_dealer_performance_history(
     return history
 
 
+def get_dealer_funnel_history(
+    dealer_id,
+    start=None,
+    end=None,
+):
+    """
+    Return monthly lead-funnel history for one dealer.
+
+    Optional start and end bounds use strict YYYY-MM format and are
+    inclusive. When neither bound is supplied, the complete lead-defined
+    history is returned.
+
+    Raises DealerNotFoundError when the dealer does not exist.
+    Raises InvalidMonthError for malformed month bounds.
+    Raises InvalidMonthRangeError when start is after end.
+    """
+    _validate_optional_month(start, "start")
+    _validate_optional_month(end, "end")
+
+    if start is not None and end is not None and start > end:
+        raise InvalidMonthRangeError("start month must not be after end month")
+
+    clauses = ["f.dealer_id = :dealer_id"]
+    params = {"dealer_id": dealer_id}
+
+    if start is not None:
+        clauses.append("f.month >= :start")
+        params["start"] = start
+
+    if end is not None:
+        clauses.append("f.month <= :end")
+        params["end"] = end
+
+    query = text(f"""
+        SELECT
+            f.dealer_id,
+            d.dealer_name,
+            f.month,
+            f.leads,
+            f.test_drives,
+            f.units_sold,
+            f.test_drive_rate_pct,
+            f.drive_to_sale_pct,
+            f.lead_to_sale_pct
+        FROM dealer_monthly_funnel f
+        JOIN dealers d
+          ON d.dealer_id = f.dealer_id
+        WHERE {" AND ".join(clauses)}
+        ORDER BY f.month
+    """)
+
+    history = pd.read_sql(
+        query,
+        get_engine(),
+        params=params,
+    )
+
+    if history.empty:
+        dealer_exists = pd.read_sql(
+            text("""
+                SELECT 1
+                FROM dealers
+                WHERE dealer_id = :dealer_id
+            """),
+            get_engine(),
+            params={"dealer_id": dealer_id},
+        )
+
+        if dealer_exists.empty:
+            raise DealerNotFoundError(f"Dealer {dealer_id} not found")
+
+    return history
+
+
 def get_regional_performance_snapshot(month):
     """
     Return one weighted performance row per region for a required month.
