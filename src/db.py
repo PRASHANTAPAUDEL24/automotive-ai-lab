@@ -295,6 +295,101 @@ def get_monthly_performance(month):
     return performance
 
 
+def get_network_funnel_trend(start=None, end=None):
+    """
+    Return the network-wide monthly lead-funnel trend.
+
+    Months are defined by the lead-based spine in dealer_monthly_funnel.
+    Completeness is evaluated at dealer-month grain:
+
+    - if any dealer lacks a lead row, network leads, test drives, and all
+      three rates are NULL;
+    - if any dealer lacks a sales dealer-month, network units sold and the
+      two sale-dependent rates are NULL.
+
+    Real zeros remain zero. Rates are ratios of gated network sums and are
+    NULL only when their denominator or a required gated total is NULL.
+
+    Optional start and end bounds are inclusive. A valid range with no
+    lead-defined months returns an empty DataFrame.
+    """
+    _validate_optional_month(start, "start")
+    _validate_optional_month(end, "end")
+
+    if start is not None and end is not None and start > end:
+        raise InvalidMonthRangeError("start month must not be after end month")
+
+    clauses = []
+    params = {}
+
+    if start is not None:
+        clauses.append("f.month >= :start")
+        params["start"] = start
+
+    if end is not None:
+        clauses.append("f.month <= :end")
+        params["end"] = end
+
+    where_sql = ""
+    if clauses:
+        where_sql = "WHERE " + " AND ".join(clauses)
+
+    query = text(f"""
+        WITH network AS (
+            SELECT
+                f.month,
+                COUNT(*) AS dealer_count,
+                COUNT(f.leads) AS lead_row_count,
+                COUNT(f.units_sold) AS sales_row_count,
+                SUM(f.leads) AS leads_sum,
+                SUM(f.test_drives) AS test_drives_sum,
+                CAST(SUM(f.units_sold) AS bigint) AS units_sold_sum
+            FROM dealer_monthly_funnel f
+            {where_sql}
+            GROUP BY f.month
+        ),
+        gated AS (
+            SELECT
+                month,
+                CASE
+                    WHEN lead_row_count = dealer_count
+                    THEN leads_sum
+                    ELSE NULL
+                END AS leads,
+                CASE
+                    WHEN lead_row_count = dealer_count
+                    THEN test_drives_sum
+                    ELSE NULL
+                END AS test_drives,
+                CASE
+                    WHEN sales_row_count = dealer_count
+                    THEN units_sold_sum
+                    ELSE NULL
+                END AS units_sold
+            FROM network
+        )
+        SELECT
+            month,
+            leads,
+            test_drives,
+            units_sold,
+            test_drives * 100.0
+                / NULLIF(leads, 0) AS test_drive_rate_pct,
+            units_sold * 100.0
+                / NULLIF(test_drives, 0) AS drive_to_sale_pct,
+            units_sold * 100.0
+                / NULLIF(leads, 0) AS lead_to_sale_pct
+        FROM gated
+        ORDER BY month
+        """)
+
+    return pd.read_sql(
+        query,
+        get_engine(),
+        params=params,
+    )
+
+
 def get_regional_funnel_snapshot(month):
     """
     Return one funnel snapshot row per dealer region for one month.
