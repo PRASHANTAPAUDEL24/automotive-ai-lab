@@ -166,6 +166,13 @@ def test_network_funnel_trend_returns_all_24_lead_defined_months():
     assert trend.iloc[-1]["month"] == LAST_MONTH
 
 
+def test_network_funnel_count_columns_use_integer_dtype():
+    trend = db.get_network_funnel_trend()
+
+    for column in ("leads", "test_drives", "units_sold"):
+        assert pd.api.types.is_integer_dtype(trend[column]), column
+
+
 def test_network_funnel_trend_is_oldest_first():
     trend = db.get_network_funnel_trend()
 
