@@ -23,6 +23,7 @@ from db import (
     get_model_performance,
     get_monthly_dealer_ranking,
     get_monthly_performance,
+    get_network_funnel_trend,
     get_network_performance_history,
     get_region_performance_history,
     get_region_summary,
@@ -36,6 +37,7 @@ from models import (
     DealerMonthlyFunnel,
     ModelMonthlyPerformance,
     MonthlyPerformance,
+    NetworkMonthlyFunnel,
     NetworkMonthlyPerformance,
     RankedDealer,
     RankedMonthlyPerformance,
@@ -355,6 +357,36 @@ def regional_funnel(
         ) from error
 
     return to_records(funnel)
+
+
+@app.get(
+    "/performance/funnel/trend",
+    response_model=list[NetworkMonthlyFunnel],
+)
+def network_funnel_trend(
+    start: str | None = Query(
+        default=None,
+        pattern=MONTH_QUERY_PATTERN,
+    ),
+    end: str | None = Query(
+        default=None,
+        pattern=MONTH_QUERY_PATTERN,
+    ),
+):
+    """Return the network-wide monthly lead-funnel trend."""
+
+    try:
+        trend = get_network_funnel_trend(
+            start=start,
+            end=end,
+        )
+    except (InvalidMonthError, InvalidMonthRangeError) as error:
+        raise HTTPException(
+            status_code=422,
+            detail=str(error),
+        ) from error
+
+    return to_records(trend)
 
 
 @app.get(

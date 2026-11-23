@@ -159,6 +159,55 @@ class ModelMonthlyPerformance(BaseModel):
     )
 
 
+class NetworkMonthlyFunnel(BaseModel):
+    """Network-wide lead-funnel performance for one month."""
+
+    month: str
+
+    leads: int | None = Field(
+        ...,
+        description=("Network leads. Null when any dealer is missing its lead row."),
+    )
+
+    test_drives: int | None = Field(
+        ...,
+        description=(
+            "Network test drives. Null when any dealer is missing its lead row."
+        ),
+    )
+
+    units_sold: int | None = Field(
+        ...,
+        description=(
+            "Network units sold. Null when any dealer is missing its sales rows."
+        ),
+    )
+
+    test_drive_rate_pct: float | None = Field(
+        ...,
+        description=(
+            "Network test drives as a percentage of leads. "
+            "Null when lead data is incomplete or leads are zero."
+        ),
+    )
+
+    drive_to_sale_pct: float | None = Field(
+        ...,
+        description=(
+            "Network units sold as a percentage of test drives. "
+            "Null when lead or sales data is incomplete or test drives are zero."
+        ),
+    )
+
+    lead_to_sale_pct: float | None = Field(
+        ...,
+        description=(
+            "Network units sold as a percentage of leads. "
+            "Null when lead or sales data is incomplete or leads are zero."
+        ),
+    )
+
+
 class RegionalFunnel(BaseModel):
     """Regional lead funnel metrics for one requested month."""
 

@@ -31,6 +31,8 @@ MONTH_PARAMETERS = [
     ("/performance/regions", "month"),
     ("/performance/models", "month"),
     ("/performance/funnel", "month"),
+    ("/performance/funnel/trend", "start"),
+    ("/performance/funnel/trend", "end"),
     ("/dealers/{dealer_id}/funnel", "start"),
     ("/dealers/{dealer_id}/funnel", "end"),
 ]
