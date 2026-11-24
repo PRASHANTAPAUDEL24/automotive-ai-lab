@@ -25,6 +25,10 @@ class InvalidLimitError(ValueError):
     """Raised when a ranking limit is outside the supported range."""
 
 
+class InvalidMinLeadsError(ValueError):
+    """Raised when a minimum-leads threshold is invalid."""
+
+
 class MonthNotFoundError(ValueError):
     """Raised when a well-formed month has no data."""
 
@@ -967,5 +971,117 @@ def get_network_performance_history(
     return pd.read_sql(
         query,
         get_engine(),
+        params=params,
+    )
+
+
+def get_dealer_funnel_ranking(month, limit=None, min_leads=0):
+    """
+    Return dealers ranked by monthly lead-to-sale conversion.
+
+    Dealers with undefined lead-to-sale rates are excluded.
+    The optional minimum-leads threshold is inclusive and is
+    applied before contiguous ranks are assigned.
+
+    Ranking uses the raw numeric lead-to-sale rate, with dealer_id
+    as the deterministic tie-break. The optional limit is applied
+    after ranking.
+
+    A well-formed month with no lead rows raises MonthNotFoundError.
+    An existing month with no eligible dealers returns an empty
+    DataFrame.
+    """
+    _validate_month(month)
+
+    if limit is not None and (
+        isinstance(limit, bool)
+        or not isinstance(limit, int)
+        or limit < 1
+        or limit > MAX_LIMIT
+    ):
+        raise InvalidLimitError(
+            f"Invalid limit: {limit!r}. "
+            f"Expected an integer between 1 and {MAX_LIMIT}."
+        )
+
+    if (
+        isinstance(min_leads, bool)
+        or not isinstance(min_leads, int)
+        or min_leads < 0
+        or min_leads > MAX_LIMIT
+    ):
+        raise InvalidMinLeadsError(
+            f"Invalid min_leads: {min_leads!r}. "
+            f"Expected an integer between 0 and {MAX_LIMIT}."
+        )
+
+    source = get_engine()
+
+    existence_query = text("""
+        SELECT 1
+        FROM dealer_monthly_funnel
+        WHERE month = :month
+        LIMIT 1
+        """)
+
+    month_exists = pd.read_sql(
+        existence_query,
+        source,
+        params={"month": month},
+    )
+
+    if month_exists.empty:
+        raise MonthNotFoundError(f"Month {month} not found")
+
+    query_sql = """
+        WITH ranked AS (
+            SELECT
+                f.dealer_id,
+                d.dealer_name,
+                d.region,
+                f.month,
+                f.leads,
+                f.test_drives,
+                f.units_sold,
+                f.test_drive_rate_pct,
+                f.drive_to_sale_pct,
+                f.lead_to_sale_pct,
+                ROW_NUMBER() OVER (
+                    ORDER BY f.lead_to_sale_pct DESC, f.dealer_id ASC
+                ) AS rank
+            FROM dealer_monthly_funnel AS f
+            JOIN dealers AS d ON d.dealer_id = f.dealer_id
+            WHERE f.month = :month
+              AND f.lead_to_sale_pct IS NOT NULL
+              AND f.leads >= CAST(:min_leads AS bigint)
+        )
+        SELECT
+            dealer_id,
+            dealer_name,
+            region,
+            month,
+            leads,
+            test_drives,
+            units_sold,
+            test_drive_rate_pct,
+            drive_to_sale_pct,
+            lead_to_sale_pct,
+            rank
+        FROM ranked
+        ORDER BY rank
+    """
+
+    params = {
+        "month": month,
+        "min_leads": min_leads,
+    }
+
+    if limit is not None:
+        query_sql += "\nLIMIT CAST(:limit AS bigint)"
+        params["limit"] = limit
+
+    return pd.read_sql(
+        text(query_sql),
+        source,
         params=params,
     )
