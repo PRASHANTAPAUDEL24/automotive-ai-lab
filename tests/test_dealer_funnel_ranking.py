@@ -706,3 +706,80 @@ def test_rates_equal_after_rounding_are_ranked_by_the_unrounded_value(
     assert [row["dealer_id"] for row in expected[:2]] == [higher_id, lower_id]
     assert result["dealer_id"].tolist()[:2] == [higher_id, lower_id]
     assert_matches(result, expected)
+
+
+@pytest.fixture
+def captured_ranking_sql(monkeypatch):
+    """Capture generated SQL without connecting to PostgreSQL."""
+    import pandas as pd
+
+    statements = []
+    fake_source = object()
+
+    def capture_read_sql(statement, source, *args, **kwargs):
+        assert source is fake_source
+
+        statements.append(
+            {
+                "sql": " ".join(str(statement).split()).lower(),
+                "params": dict(kwargs.get("params", {})),
+            }
+        )
+
+        if len(statements) == 1:
+            return pd.DataFrame({"exists": [1]})
+
+        if len(statements) == 2:
+            return pd.DataFrame()
+
+        pytest.fail("Unexpected additional SQL statement")
+
+    monkeypatch.setattr(db, "get_engine", lambda: fake_source)
+    monkeypatch.setattr(db.pd, "read_sql", capture_read_sql)
+
+    def capture():
+        db.get_dealer_funnel_ranking(
+            "2026-09",
+            limit=5,
+            min_leads=10,
+        )
+
+        assert len(statements) == 2
+
+        return statements[1]
+
+    return capture
+
+
+def test_ranking_query_has_explicit_final_order_by_rank(
+    captured_ranking_sql,
+):
+    """The final result must explicitly order rows by rank."""
+    captured = captured_ranking_sql()
+    sql = captured["sql"]
+
+    assert "from ranked order by rank" in sql
+
+
+def test_ranking_query_casts_limit_to_bigint(
+    captured_ranking_sql,
+):
+    """The optional limit must retain its explicit bigint cast."""
+    captured = captured_ranking_sql()
+    sql = captured["sql"]
+    params = captured["params"]
+
+    assert sql.endswith("limit cast(:limit as bigint)")
+    assert params["limit"] == 5
+
+
+def test_ranking_query_casts_min_leads_to_bigint(
+    captured_ranking_sql,
+):
+    """The inclusive threshold must use an explicit bigint cast."""
+    captured = captured_ranking_sql()
+    sql = captured["sql"]
+    params = captured["params"]
+
+    assert "f.leads >= cast(:min_leads as bigint)" in sql
+    assert params["min_leads"] == 10
