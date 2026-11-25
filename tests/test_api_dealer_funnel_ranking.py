@@ -424,3 +424,26 @@ def test_openapi_query_contract():
         assert integer["minimum"] == minimum
         assert integer["maximum"] == db.MAX_LIMIT
         assert schema.get("default") == (None if name == "limit" else 0)
+
+
+def test_ranking_delegates_to_shared_serializer(monkeypatch):
+    """Preserve the shared null-safe serialization contract."""
+    row = valid_row()
+    frame = pd.DataFrame([row])
+    calls = []
+
+    patch_query(monkeypatch, lambda *args, **kwargs: frame)
+
+    original_serializer = api.to_records
+
+    def capture_serializer(result):
+        calls.append(result)
+        return original_serializer(result)
+
+    monkeypatch.setattr(api, "to_records", capture_serializer)
+
+    response = client.get(PATH, params={"month": MONTH})
+
+    assert_rows(response, [row])
+    assert len(calls) == 1
+    assert calls[0] is frame
