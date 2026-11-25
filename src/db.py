@@ -1085,3 +1085,188 @@ def get_dealer_funnel_ranking(month, limit=None, min_leads=0):
         source,
         params=params,
     )
+
+
+def get_dealer_funnel_opportunities(month, limit=None, min_leads=0):
+    """
+    Return dealers converting below their regional lead-to-sale benchmark.
+
+    The benchmark is the regional ratio of sums: total units sold divided by
+    total leads across every dealer in the region. It exists only when every
+    dealer in the region has a lead row and an aggregated sales dealer-month
+    and the region has positive total leads, and it is never affected by
+    min_leads or limit.
+
+    A dealer qualifies when it has at least min_leads leads and a conversion
+    rate strictly below its regional benchmark. With dealer leads/units
+    (L_d, S_d) and regional leads/units (L_r, S_r), the exact numerator
+    N = L_d * S_r - S_d * L_r is positive exactly then; a dealer with zero
+    leads can never satisfy it, so it needs no separate guard. Operands are
+    cast to numeric before multiplying so large counts cannot overflow.
+
+    Estimated opportunity units are N / L_r: the units the dealer would have
+    sold at the regional rate minus the units it actually sold. The quotient
+    is computed once, as an integer division at a fixed scale of 30 decimal
+    places (truncated). PostgreSQL's default numeric division picks its result
+    scale from an estimate of the quotient's size, which can give
+    mathematically equal opportunities different digits, and dividing before
+    subtracting makes it worse. A fixed scale makes equal rationals identical
+    and keeps distinct ones apart while regional lead totals stay below 1e15
+    (INTEGER leads, so far fewer than 460,000 dealers per region): two
+    distinct opportunities differ by at least 1 / (L_r1 * L_r2), above 1e-30.
+    That is an assumption about the supported data, not a claim about the
+    whole bigint range.
+    Ranking happens on this numeric value, never on a converted float. Ranks
+    are contiguous, ordered by opportunity descending then dealer_id, and
+    assigned before the optional limit.
+
+    A well-formed month with no lead rows raises MonthNotFoundError. An
+    existing month with no qualifying dealers returns an empty DataFrame.
+    """
+    _validate_month(month)
+
+    if limit is not None and (
+        isinstance(limit, bool)
+        or not isinstance(limit, int)
+        or limit < 1
+        or limit > MAX_LIMIT
+    ):
+        raise InvalidLimitError(
+            f"Invalid limit: {limit!r}. "
+            f"Expected an integer between 1 and {MAX_LIMIT}."
+        )
+
+    if (
+        isinstance(min_leads, bool)
+        or not isinstance(min_leads, int)
+        or min_leads < 0
+        or min_leads > MAX_LIMIT
+    ):
+        raise InvalidMinLeadsError(
+            f"Invalid min_leads: {min_leads!r}. "
+            f"Expected an integer between 0 and {MAX_LIMIT}."
+        )
+
+    source = get_engine()
+
+    existence_query = text("""
+        SELECT 1
+        FROM dealer_monthly_funnel
+        WHERE month = :month
+        LIMIT 1
+        """)
+
+    month_exists = pd.read_sql(
+        existence_query,
+        source,
+        params={"month": month},
+    )
+
+    if month_exists.empty:
+        raise MonthNotFoundError(f"Month {month} not found")
+
+    query_sql = """
+        WITH regional AS (
+            SELECT
+                d.region,
+                COUNT(*) AS dealer_count,
+                COUNT(f.leads) AS lead_rows,
+                COUNT(f.units_sold) AS sales_rows,
+                SUM(f.leads) AS leads_sum,
+                SUM(f.units_sold) AS units_sum
+            FROM dealer_monthly_funnel AS f
+            JOIN dealers AS d ON d.dealer_id = f.dealer_id
+            WHERE f.month = :month
+            GROUP BY d.region
+        ),
+        benchmark AS (
+            SELECT region, leads_sum, units_sum
+            FROM regional
+            WHERE lead_rows = dealer_count
+              AND sales_rows = dealer_count
+              AND leads_sum > 0
+        ),
+        candidates AS (
+            SELECT
+                f.dealer_id,
+                d.dealer_name,
+                d.region,
+                f.month,
+                f.leads,
+                f.units_sold,
+                f.lead_to_sale_pct AS dealer_lead_to_sale_pct,
+                b.units_sum * 100.0 / b.leads_sum
+                    AS regional_lead_to_sale_pct,
+                CAST(f.leads AS numeric) * b.units_sum
+                    - CAST(f.units_sold AS numeric) * b.leads_sum
+                    AS numerator,
+                b.leads_sum AS regional_leads
+            FROM dealer_monthly_funnel AS f
+            JOIN dealers AS d ON d.dealer_id = f.dealer_id
+            JOIN benchmark AS b ON b.region = d.region
+            WHERE f.month = :month
+              AND f.leads >= CAST(:min_leads AS bigint)
+        ),
+        qualified AS (
+            SELECT
+                dealer_id,
+                dealer_name,
+                region,
+                month,
+                leads,
+                units_sold,
+                dealer_lead_to_sale_pct,
+                regional_lead_to_sale_pct,
+                DIV(numerator * 1e30, regional_leads) * 1e-30
+                    AS estimated_opportunity_units
+            FROM candidates
+            WHERE numerator > 0
+        ),
+        ranked AS (
+            SELECT
+                dealer_id,
+                dealer_name,
+                region,
+                month,
+                leads,
+                units_sold,
+                dealer_lead_to_sale_pct,
+                regional_lead_to_sale_pct,
+                regional_lead_to_sale_pct - dealer_lead_to_sale_pct
+                    AS conversion_gap_pp,
+                estimated_opportunity_units,
+                ROW_NUMBER() OVER (
+                    ORDER BY estimated_opportunity_units DESC, dealer_id ASC
+                ) AS rank
+            FROM qualified
+        )
+        SELECT
+            dealer_id,
+            dealer_name,
+            region,
+            month,
+            leads,
+            units_sold,
+            dealer_lead_to_sale_pct,
+            regional_lead_to_sale_pct,
+            conversion_gap_pp,
+            estimated_opportunity_units,
+            rank
+        FROM ranked
+        ORDER BY rank
+    """
+
+    params = {
+        "month": month,
+        "min_leads": min_leads,
+    }
+
+    if limit is not None:
+        query_sql += "\nLIMIT CAST(:limit AS bigint)"
+        params["limit"] = limit
+
+    return pd.read_sql(
+        text(query_sql),
+        source,
+        params=params,
+    )
