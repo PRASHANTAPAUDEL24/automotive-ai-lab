@@ -305,3 +305,24 @@ class NetworkMonthlyPerformance(BaseModel):
             "is zero."
         )
     )
+
+
+class RankedDealerFunnel(BaseModel):
+    """One dealer's ranked lead-funnel performance for a month."""
+
+    dealer_id: int
+    dealer_name: str
+    region: str
+    month: str
+    leads: int
+    test_drives: int
+    units_sold: int
+    test_drive_rate_pct: float
+    drive_to_sale_pct: float | None = Field(
+        ...,
+        description="Sales per 100 test drives. Null when test drives are zero.",
+    )
+    lead_to_sale_pct: float
+    rank: int = Field(
+        description="Monthly conversion rank; 1 is the highest conversion."
+    )
