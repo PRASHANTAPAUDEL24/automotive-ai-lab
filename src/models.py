@@ -326,3 +326,32 @@ class RankedDealerFunnel(BaseModel):
     rank: int = Field(
         description="Monthly conversion rank; 1 is the highest conversion."
     )
+
+
+class RankedDealerOpportunity(BaseModel):
+    """One dealer's estimated conversion opportunity for a month."""
+
+    dealer_id: int = Field(description="Unique dealer identifier.")
+    dealer_name: str = Field(description="Dealer business name.")
+    region: str = Field(description="Dealer sales region.")
+    month: str = Field(description="Reporting month in YYYY-MM format.")
+    leads: int = Field(description="Recorded monthly leads.")
+    units_sold: int = Field(description="Actual monthly vehicle sales.")
+    dealer_lead_to_sale_pct: float = Field(description="Dealer sales per 100 leads.")
+    regional_lead_to_sale_pct: float = Field(
+        description="Regional ratio-of-sums conversion rate, including the dealer."
+    )
+    conversion_gap_pp: float = Field(
+        description="Regional minus dealer conversion rate, in percentage points."
+    )
+    estimated_opportunity_units: float = Field(
+        description=(
+            "Estimated additional units at the regional benchmark; "
+            "not a sales forecast."
+        )
+    )
+    rank: int = Field(
+        description=(
+            "Global opportunity rank; 1 represents the largest estimated opportunity."
+        )
+    )

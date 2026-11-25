@@ -20,6 +20,7 @@ from db import (
     get_at_risk_dealers,
     get_dealer,
     get_dealer_funnel_history,
+    get_dealer_funnel_opportunities,
     get_dealer_funnel_ranking,
     get_dealer_performance_history,
     get_model_performance,
@@ -43,6 +44,7 @@ from models import (
     NetworkMonthlyPerformance,
     RankedDealer,
     RankedDealerFunnel,
+    RankedDealerOpportunity,
     RankedMonthlyPerformance,
     RegionalFunnel,
     RegionMonthlyPerformance,
@@ -407,6 +409,53 @@ def dealer_funnel_ranking(
         ) from error
 
     return to_records(ranking)
+
+
+@app.get(
+    "/performance/funnel/opportunities",
+    response_model=list[RankedDealerOpportunity],
+)
+def dealer_funnel_opportunities(
+    month: str = Query(
+        ...,
+        pattern=MONTH_QUERY_PATTERN,
+        description="Month in YYYY-MM format.",
+    ),
+    limit: int | None = Query(
+        default=None,
+        ge=1,
+        le=MAX_LIMIT,
+    ),
+    min_leads: int = Query(
+        default=0,
+        ge=0,
+        le=MAX_LIMIT,
+    ),
+):
+    """Return dealers below their regional benchmark ranked by opportunity."""
+
+    try:
+        opportunities = get_dealer_funnel_opportunities(
+            month,
+            limit=limit,
+            min_leads=min_leads,
+        )
+    except (
+        InvalidMonthError,
+        InvalidLimitError,
+        InvalidMinLeadsError,
+    ) as error:
+        raise HTTPException(
+            status_code=422,
+            detail=str(error),
+        ) from error
+    except MonthNotFoundError as error:
+        raise HTTPException(
+            status_code=404,
+            detail=str(error),
+        ) from error
+
+    return to_records(opportunities)
 
 
 @app.get(
