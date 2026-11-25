@@ -1,6 +1,6 @@
 # Automotive AI Lab: Project Progress Summary
 
-**Last updated:** 24 Nov 2026 · **Latest code commit:** `a1290b3` (Pin ranking endpoint serializer delegation) · **Tests:** 1523 passing in CI · **CI:** passing on `main`
+**Last updated:** 25 Nov 2026 · **Latest code commit:** `9534cac` (Add dealer funnel opportunities endpoint) · **Tests:** 1921 passing in CI · **CI:** passing on `main`
 **Repository:** https://github.com/PRASHANTAPAUDEL24/automotive-ai-lab
 **Author:** Prashanta Paudel
 
@@ -15,7 +15,7 @@ The project builds a data and analytics foundation for AI-powered automotive dea
 - Dealer sales and inventory analytics, implemented twice (pandas and PostgreSQL) and cross-checked against each other.
 - Five reusable PostgreSQL views, including the dealer-grain `dealer_monthly_performance`, the shared regional/network `monthly_performance_rollup`, and the `dealer_scorecard` view with four business-risk flags.
 - A safe, parameterized Python query layer (`src/db.py`).
-- A FastAPI service with sixteen endpoints:
+- A FastAPI service with seventeen endpoints:
 
 | Endpoint | Behaviour |
 |---|---|
@@ -35,9 +35,10 @@ The project builds a data and analytics foundation for AI-powered automotive dea
 | `GET /dealers/{dealer_id}/funnel` | Returns one dealer's monthly lead-funnel history, oldest first. Optional inclusive `start` and `end` bounds use strict `YYYY-MM`. Missing lead or sales data remains null while real zeros remain zero. A valid dealer with no rows in the window returns `[]`; unknown dealers return 404; malformed or reversed bounds return 422. |
 | `GET /performance/funnel/trend` | Returns the network-wide monthly lead-funnel trend, oldest first. Optional inclusive `start` and `end` bounds use strict `YYYY-MM`. Missing lead data nulls leads, test drives and all three rates; missing sales data nulls units sold and the two sale rates. A valid empty window returns `[]`; malformed or reversed bounds return 422. |
 | `GET /performance/funnel/ranking` | Ranks eligible dealers by raw lead-to-sale conversion for one required month, with deterministic ties, optional inclusive `min_leads` and bounded `limit`. Existing months without eligible dealers return `[]`; absent lead months return 404; invalid parameters return 422. |
+| `GET /performance/funnel/opportunities` | Ranks dealers strictly below their complete regional lead-to-sale benchmark for a required `month=YYYY-MM`, by estimated additional units descending then dealer ID ascending. Inclusive `min_leads` (default 0) filters before ranking; optional `limit` trims afterward. Both filters are bounded by signed PostgreSQL `bigint` maximum; `limit` must be positive. Invalid parameters return 422, absent lead months return 404, and existing months without eligible dealers return `200 []`. |
 
-- Pydantic response models (`Dealer`: 17 fields, 5 nullable; `RegionSummary`: region plus 5 count fields; `RankedDealer`: `Dealer` plus `rank` and `risk_tier`; `MonthlyPerformance`: 6 fields, 2 nullable; `RegionMonthlyPerformance`: 6 fields, 2 nullable; `NetworkMonthlyPerformance`: 5 fields, 2 nullable; `RankedMonthlyPerformance`: 7 required non-null fields; `ModelMonthlyPerformance`: 6 fields with nullable share and weighted average price; `RegionalFunnel`: 7 required fields with six nullable metrics; `DealerMonthlyFunnel`: 9 required fields with six nullable metrics; `NetworkMonthlyFunnel`: 7 required fields with six nullable metrics; `RankedDealerFunnel`: 11 required fields with only `drive_to_sale_pct` nullable) that validate API output and drive the schemas shown in `/docs`.
-- A pytest suite with 1522 local passes plus 1 JIT-only skip, and 1523 passing tests in CI. Day 33 added 229 database ranking tests, 154 API ranking tests and one shared month-contract case. Database mutation testing killed 54 of 56 mutants with two justified equivalent survivors; API mutation testing killed all 63 primary mutants and all 4 supplementary probes. Day 31 added the canonical `dealer_monthly_funnel` view, `get_dealer_funnel_history()`, and `GET /dealers/{dealer_id}/funnel?start=&end=`. Day 30 added 44 database tests and 21 API/model tests for regional lead funnel analytics. Database mutation testing killed all 29 implemented non-equivalent mutants, and API/model mutation testing killed all 17 mutants with no survivors. Day 29 added 19 database tests and 17 API/model tests for monthly vehicle-model performance, with database mutation testing killing all 10 non-equivalent mutants (one equivalent survivor) and API/model mutation testing killing all 13 (one equivalent raw-record survivor). Day 28 added 8 focused `/dealers/at-risk` large-limit regression tests covering three valid values above the former 32-bit ceiling, DB/API parity with the unbounded ranking, the one-above-`bigint` 422 boundary, and the SQL `bigint` cast contract. Day 27 added 12 direct `monthly_performance_rollup` view-contract tests, 1 consumer-contract test, 1 deterministic load-script statistics guard and 1 JIT-aware rollup plan-cost guard. All sixteen FastAPI month parameters now use the shared strict ASCII `YYYY-MM` query pattern and are enumerated by the centralized month-format contract. On the local PostgreSQL build the JIT-specific guard skips because JIT is unavailable; CI has JIT available and all 1523 tests pass there.
+- Pydantic response models (`Dealer`: 17 fields, 5 nullable; `RegionSummary`: region plus 5 count fields; `RankedDealer`: `Dealer` plus `rank` and `risk_tier`; `MonthlyPerformance`: 6 fields, 2 nullable; `RegionMonthlyPerformance`: 6 fields, 2 nullable; `NetworkMonthlyPerformance`: 5 fields, 2 nullable; `RankedMonthlyPerformance`: 7 required non-null fields; `ModelMonthlyPerformance`: 6 fields with nullable share and weighted average price; `RegionalFunnel`: 7 required fields with six nullable metrics; `DealerMonthlyFunnel`: 9 required fields with six nullable metrics; `NetworkMonthlyFunnel`: 7 required fields with six nullable metrics; `RankedDealerFunnel`: 11 required fields with only `drive_to_sale_pct` nullable; `RankedDealerOpportunity`: 11 required non-null fields) that validate API output and drive the schemas shown in `/docs`.
+- A pytest suite with 1920 local passes plus 1 JIT-only skip, and 1921 passing tests in CI. Day 34 added 238 database opportunity tests, 159 API tests and one centralized month-contract case (398 new tests). The final database campaign killed 41/44 mutants with three justified equivalents; the API campaign killed 74/74 (71 behavioral-classified, three structural), with no equivalents. Combined: 115/118 killed, 97.46% raw and 100% adjusted, zero unresolved survivors and zero execution errors. Both isolated campaigns restored protected files and focused baselines. Day 33 added 229 database ranking tests, 154 API ranking tests and one shared month-contract case. Database mutation testing killed 54 of 56 mutants with two justified equivalent survivors; API mutation testing killed all 63 primary mutants and all 4 supplementary probes. Day 31 added the canonical `dealer_monthly_funnel` view, `get_dealer_funnel_history()`, and `GET /dealers/{dealer_id}/funnel?start=&end=`. Day 30 added 44 database tests and 21 API/model tests for regional lead funnel analytics. Database mutation testing killed all 29 implemented non-equivalent mutants, and API/model mutation testing killed all 17 mutants with no survivors. Day 29 added 19 database tests and 17 API/model tests for monthly vehicle-model performance, with database mutation testing killing all 10 non-equivalent mutants (one equivalent survivor) and API/model mutation testing killing all 13 (one equivalent raw-record survivor). Day 28 added 8 focused `/dealers/at-risk` large-limit regression tests covering three valid values above the former 32-bit ceiling, DB/API parity with the unbounded ranking, the one-above-`bigint` 422 boundary, and the SQL `bigint` cast contract. Day 27 added 12 direct `monthly_performance_rollup` view-contract tests, 1 consumer-contract test, 1 deterministic load-script statistics guard and 1 JIT-aware rollup plan-cost guard. All seventeen FastAPI month parameters now use the shared strict ASCII `YYYY-MM` query pattern and are enumerated by the centralized month-format contract. On the local PostgreSQL build the JIT-specific guard skips because JIT is unavailable; CI has JIT available and all 1921 tests pass there.
 - GitHub Actions CI on every push and pull request: a fresh `ubuntu-24.04` runner with a `postgres:18.6` service rebuilds the database from the SQL scripts, then runs Black, Ruff and the full test suite.
 
 **Day 31 — Dealer-level lead funnel drill-down**
@@ -99,7 +100,38 @@ The project builds a data and analytics foundation for AI-powered automotive dea
 - Final verification: 1522 passed plus 1 JIT-only skip locally; GitHub
   Actions CI #46 passed all 1523 tests.
 
-**Next step:** Day 34 — dealer exceptions and opportunities endpoint (design first).
+**Day 34 — Dealer funnel opportunities**
+
+- Added `get_dealer_funnel_opportunities(month, limit=None, min_leads=0)` over
+  `dealer_monthly_funnel`. The benchmark is regional units / regional leads,
+  including the evaluated dealer; it is calculated before candidate filters.
+  Only complete regions with positive total leads and strictly positive
+  opportunity numerators contribute candidates. Rank by estimated additional
+  units descending, then dealer ID ascending. Apply inclusive minimum leads
+  before contiguous ranking and limit afterward.
+- Added `GET /performance/funnel/opportunities` with `RankedDealerOpportunity`
+  (eleven required non-null fields), shared month pattern, bigint bounds,
+  exact argument forwarding, 422/404 mapping and `to_records()` delegation.
+  Existing lead months with no eligible dealers return `200 []`.
+- Database RED: 232 failed, 5 passed (237 tests); initial GREEN: 237 passed.
+  A surviving missing-sales completeness mutation (M12) prompted one new
+  behavioral test, giving 238 focused passes. Final database campaign:
+  41/44 killed, three justified equivalents (M08 redundant numeric cast,
+  M21 sales coalescing under completeness, M23 RANK with unique order keys),
+  zero errors and 100% adjusted score. CI #48: 1761 passed in 12.77s;
+  workflow 1m 7s, commit `26ca757`.
+- API RED: 156 failed, 22 passed (178 focused tests, including the shared
+  month contract); GREEN: 178 passed in 2.49s. Final API campaign: 74/74
+  killed, 71 behavioral-classified and three structural (M12, M72, M73),
+  no survivors or errors, 100% raw and adjusted. Restored baseline: 178 passed.
+- Combined final campaigns: 118 distinct definitions, 115 killed, three
+  accepted equivalents, 97.46% raw and 100% adjusted; no unresolved
+  survivors or execution errors. These are targeted, not exhaustive scores.
+- Final local regression: 1920 passed, one JIT-only skip (24.86s), Black and
+  Ruff clean. CI #49: 1921 passed in 14.39s; test job 1m 7s, workflow
+  1m 11s, commit `9534cac`. API paths and centralized month parameters: 17 each.
+
+**Next step:** Day 35 — design first; scope to be decided.
 
 
 **Architecture**
@@ -153,6 +185,8 @@ uvicorn api:app --app-dir src --reload
 | `early_overstock_watch` | `sales_risk` AND high supply AND NOT `inventory_risk` |
 | Risk tier | 1 = `combined_risk`, 2 = `early_overstock_watch`, 3 = `sales_risk` only, 4 = `inventory_risk` only |
 | Rank | Position in the at-risk list: by risk tier, then months of supply (highest first, NULL first), then `dealer_id` |
+| Regional conversion benchmark | Regional units sold / regional leads, including all dealers, with complete lead and aggregated sales rows and positive total leads |
+| Estimated opportunity units | Dealer leads times regional benchmark minus actual dealer units; strictly positive values qualify, ranked before limit |
 
 Flags use unrounded values. Rounding is for display only.
 
@@ -193,20 +227,24 @@ Flags use unrounded values. Rounding is for display only.
 
 ## 6. Known limitations
 
-- Month-aware performance analytics are available across SQL, Python and FastAPI through `dealer_monthly_performance`, `GET /performance?month=YYYY-MM`, `GET /dealers/{dealer_id}/performance`, `GET /regions/{region}/performance`, `GET /performance/trend`, `GET /performance/ranking?month=YYYY-MM`, `GET /performance/regions?month=YYYY-MM`, `GET /performance/models?month=YYYY-MM`, `GET /performance/funnel?month=YYYY-MM`, `GET /performance/funnel/trend?start=&end=` and `GET /dealers/{dealer_id}/funnel?start=&end=`, covering October 2024 through September 2026.
+- Month-aware performance analytics are available across SQL, Python and FastAPI through `dealer_monthly_performance`, `GET /performance?month=YYYY-MM`, `GET /dealers/{dealer_id}/performance`, `GET /regions/{region}/performance`, `GET /performance/trend`, `GET /performance/ranking?month=YYYY-MM`, `GET /performance/regions?month=YYYY-MM`, `GET /performance/models?month=YYYY-MM`, `GET /performance/funnel?month=YYYY-MM`, `GET /performance/funnel/trend?start=&end=`, `GET /dealers/{dealer_id}/funnel?start=&end=`, `GET /performance/funnel/ranking`, and `GET /performance/funnel/opportunities`, covering October 2024 through September 2026.
 - `inventory_supply`, `dealer_scorecard` and the endpoints built on them (`GET /dealers`, `GET /dealers/{dealer_id}`, `GET /dealers/at-risk` and `GET /regions/summary`) remain fixed to September 2026. Inventory is a single snapshot as of September 30, 2026, so historical inventory and risk analysis is not yet month-aware.
 - `GET /performance` returns all 40 dealers for one month, `GET /dealers/{dealer_id}/performance` returns one dealer's monthly history, `GET /regions/{region}/performance` returns weighted regional monthly history, `GET /performance/trend` returns weighted network-wide monthly history, `GET /performance/ranking` ranks rankable dealers for one required month, `GET /performance/regions` compares all five regions for one required month, `GET /performance/models` returns network vehicle-model performance for one required month, `GET /performance/funnel` returns regional lead-funnel metrics for one required month, `GET /performance/funnel/trend` returns the network-wide monthly lead-funnel trend, and `GET /dealers/{dealer_id}/funnel` returns one dealer's monthly lead-funnel history. Dealer, regional and network history accept optional inclusive `start` and `end` bounds; ranking accepts an optional bounded `limit`. Filtering is month-precision only (`YYYY-MM`); daily or arbitrary-date filtering is not implemented.
 - `GET /performance/models` returns only vehicle models that have at least one `sales_monthly` row for the requested month. A model with rows but zero total units remains in the response; a catalog model with no sales rows for that month is omitted.
 - `GET /performance/funnel` defines sales completeness at dealer-month grain: a dealer is sales-complete when an aggregated sales dealer-month exists. It does not require all eight vehicle-model rows to be present.
 - The funnel rates are same-month operational approximations. They compare leads, test drives and units sold recorded in the same month and do not track lead cohorts, conversion lag or attribution across months.
-- Funnel analytics now expose regional snapshots through `GET /performance/funnel`, dealer-level monthly history through `GET /dealers/{dealer_id}/funnel`, and the network-wide monthly trend through `GET /performance/funnel/trend`.
+- Funnel analytics now expose regional snapshots through `GET /performance/funnel`, dealer-level monthly history through `GET /dealers/{dealer_id}/funnel`, the network-wide monthly trend through `GET /performance/funnel/trend`, dealer ranking through `GET /performance/funnel/ranking`, and opportunities through `GET /performance/funnel/opportunities`.
 - `GET /dealers/{dealer_id}/funnel` returns raw, unrounded rates for every dealer-month, including months with very small lead counts; there is no minimum-leads threshold yet.
 - `GET /performance/funnel/trend` defines its month spine by `leads_monthly`: a month with sales rows but no lead rows is absent rather than zero-filled.
 - `GET /performance/funnel/trend` computes network completeness by row existence: if any dealer lacks a lead row, that month's network leads, test drives and all three rates are null; if any dealer lacks an aggregated sales dealer-month, network units sold and the two sale rates are null. Rates are raw, unrounded ratios of network sums with no minimum-leads threshold, and a zero denominator yields null.
-- A dealer funnel ranking endpoint is not implemented yet.
+- Dealer funnel ranking and regional benchmark opportunities are implemented; both support inclusive `min_leads` and bounded `limit`.
+- Opportunity estimates are same-month benchmark scenarios, not forecasts, causal estimates or guaranteed recoverable sales. The regional benchmark includes the evaluated dealer and all other dealers, not just eligible candidates. A missing lead or aggregated sales dealer-month excludes the entire region; a region with zero total leads is excluded. An individual missing model row is not itself a completeness failure. Operational counts are assumed nonnegative; no new check constraints enforce this. Positive leads with zero sales can qualify; zero individual leads cannot qualify under that assumption. Zero test drives do not independently exclude a dealer.
+- Opportunity ranking uses a positive exact numeric numerator and a controlled 30-decimal-place truncated quotient before serialization. For regional lead totals below `10**15`, distinct rational opportunities remain distinguishable at that precision; this is not a guarantee over arbitrary bigint totals. JSON floats can coincide for distinct opportunities, so clients must preserve returned rank rather than re-sort displayed values. Percentage gaps are differences of computed rates and are subject to numeric precision. No minimum materiality threshold is imposed.
+- The opportunity query checks month existence separately from the ranked read; concurrent lead changes may affect 404 versus empty-result behavior because a shared snapshot is not guaranteed.
+- M12 (default `min_leads` changed from 0 to 10) is killed by schema and forwarding checks, not real-data response differences: the committed fixture has no dealer below 10 leads. M22 (month passed as a keyword) is behavioral-classified by the harness because mock-based exception-mapping tests also fail, not proof of a client-visible difference. Mutation scores cover the selected definitions only, including structural contracts.
 - A real dealer with no lead or sales rows returns one row with all six funnel metrics null per funnel month, not a 404; only an unknown dealer ID returns 404. Funnel months are defined by `leads_monthly`, so a month that exists only in sales data does not create a funnel month.
 - The ratio-of-sums contract is independently pinned by the 24-month oracle and a deliberately divergent transactional fixture. A dedicated mean-of-dealer-rates source mutant was not generated because that alternative requires a structural SQL rewrite rather than a safe local substitution.
-- The strict ASCII `YYYY-MM` rule is centralized in `src/db.py` as `MONTH_FORMAT`. `MONTH_QUERY_PATTERN` and the compiled `_MONTH_RE` are derived from that one value. All fifteen FastAPI month parameters now use the shared query pattern and are enumerated by the centralized month-format contract. Required-month and optional-bound validators still intentionally keep their different existing error messages.
+- The strict ASCII `YYYY-MM` rule is centralized in `src/db.py` as `MONTH_FORMAT`. `MONTH_QUERY_PATTERN` and the compiled `_MONTH_RE` are derived from that one value. All seventeen FastAPI month parameters now use the shared query pattern and are enumerated by the centralized month-format contract. Required-month and optional-bound validators still intentionally keep their different existing error messages.
 - `GET /performance/ranking` excludes dealers whose achievement is undefined because the target is missing or zero. Ranking uses raw, unrounded achievement highest-first with `dealer_id` as the deterministic tie-break. `ROW_NUMBER()` gives contiguous positional ranks; the optional `limit` is applied after ranking and capped at PostgreSQL bigint maximum (`2**63 - 1`).
 - `get_monthly_dealer_ranking()` performs two database reads: one to establish that the requested month exists and one to return the rankable rows. With the project's static analytical dataset this is harmless, but under concurrent writes the two reads could theoretically observe different states unless they share a transaction or snapshot.
 - `GET /performance/ranking` currently supports highest-achievement-first ordering only; there is no ascending/descending sort-direction parameter.
@@ -522,11 +560,23 @@ are assumed rather than newly enforced; `min_leads` has no business-specific
 cap below the signed-bigint maximum. Rates remain same-month operational
 approximations, not cohort conversion measures.
 
+**Day 34: Dealer funnel opportunities.** Reused the canonical funnel view and
+regional ratio-of-sums benchmark to identify strictly positive opportunities.
+Database and API implementations were committed separately (`26ca757`,
+`9534cac`). The independent CSV Fraction oracle and transactional fixtures
+protect completeness, threshold reranking, deterministic ties and precision.
+The 30-place quotient is calculated before pandas/JSON float conversion;
+identical serialized values can retain distinct ranks. See the Day 34 summary
+above for RED/GREEN counts and mutation evidence, and section 6 for limitations.
+CI #48 and #49 passed; final code baseline has 17 paths, 17 month parameters,
+1921 CI passes and no failures. Mutation evidence was archived outside the
+repository; no mutation harness or transient logs were committed.
+
 ---
 
 ## 9. Roadmap
 
-**Next:** Day 34 — dealer exceptions and opportunities endpoint (design first), preserving the existing validation, response-model, test-first and mutation-testing conventions.
+**Next:** Day 35 — design first; scope to be decided.
 
 **Then:**
 
