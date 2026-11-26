@@ -1270,3 +1270,170 @@ def get_dealer_funnel_opportunities(month, limit=None, min_leads=0):
         source,
         params=params,
     )
+
+
+def get_dealer_funnel_movement(month, limit=None, min_leads=0):
+    """Rank comparable dealers by signed month-over-month conversion change.
+
+    Both calendar months must exist in leads_monthly. A dealer needs positive
+    leads and a sales aggregate in both months; min_leads applies inclusively
+    to both. Zero sales and unchanged conversion are valid observations.
+
+    Rank current minus prior conversion in percentage points, ascending, with
+    dealer_id ascending as the tie-break. The exact rational has numerator
+    100 * (current_units * prior_leads - prior_units * current_leads)
+    and denominator current_leads * prior_leads. Cast before multiplying.
+    With positive INTEGER leads <= M = 2**31 - 1, two distinct rational
+    movements differ by at least 100 / M**4, greater than 1e-40. Fixed-scale
+    truncation therefore preserves exact equality and strict ordering over
+    the supported lead domain, including negative movements. Convert to
+    floats only after SQL ranking. The limit trims contiguous ranks.
+
+    Month existence and ranking share one analytical SQL statement snapshot.
+    A missing current month takes precedence over a missing prior month;
+    January of year zero has no predecessor in the four-digit month domain.
+    Existing months with no comparable dealers return an empty DataFrame.
+    This describes conversion movement, not its cause or a sales forecast.
+    """
+    _validate_month(month)
+
+    if limit is not None and (
+        isinstance(limit, bool)
+        or not isinstance(limit, int)
+        or limit < 1
+        or limit > MAX_LIMIT
+    ):
+        raise InvalidLimitError(
+            f"Invalid limit: {limit!r}. "
+            f"Expected an integer between 1 and {MAX_LIMIT}."
+        )
+
+    if (
+        isinstance(min_leads, bool)
+        or not isinstance(min_leads, int)
+        or min_leads < 0
+        or min_leads > MAX_LIMIT
+    ):
+        raise InvalidMinLeadsError(
+            f"Invalid min_leads: {min_leads!r}. "
+            f"Expected an integer between 0 and {MAX_LIMIT}."
+        )
+
+    year, month_number = map(int, month.split("-"))
+    if month_number > 1:
+        prior_month = f"{year:04d}-{month_number - 1:02d}"
+    elif year > 0:
+        prior_month = f"{year - 1:04d}-12"
+    else:
+        prior_month = None
+
+    query = text("""
+        WITH month_status AS (
+            SELECT
+                EXISTS (
+                    SELECT 1 FROM leads_monthly WHERE month = :month
+                ) AS current_month_exists,
+                EXISTS (
+                    SELECT 1 FROM leads_monthly WHERE month = :prior_month
+                ) AS prior_month_exists
+        ),
+        comparable AS (
+            SELECT
+                c.dealer_id,
+                d.dealer_name,
+                d.region,
+                c.month,
+                p.month AS prior_month,
+                c.leads,
+                p.leads AS prior_leads,
+                c.units_sold,
+                p.units_sold AS prior_units_sold,
+                c.lead_to_sale_pct AS conversion_pct,
+                p.lead_to_sale_pct AS prior_conversion_pct,
+                CAST(c.units_sold AS numeric) * p.leads
+                    - CAST(p.units_sold AS numeric) * c.leads AS numerator,
+                CAST(c.leads AS numeric) * p.leads AS denominator
+            FROM dealer_monthly_funnel AS c
+            JOIN dealer_monthly_funnel AS p ON p.dealer_id = c.dealer_id
+            JOIN dealers AS d ON d.dealer_id = c.dealer_id
+            WHERE c.month = :month
+              AND p.month = :prior_month
+              AND c.leads > 0
+              AND p.leads > 0
+              AND c.units_sold IS NOT NULL
+              AND p.units_sold IS NOT NULL
+              AND c.leads >= CAST(:min_leads AS bigint)
+              AND p.leads >= CAST(:min_leads AS bigint)
+        ),
+        movement AS (
+            SELECT
+                dealer_id,
+                dealer_name,
+                region,
+                month,
+                prior_month,
+                leads,
+                prior_leads,
+                units_sold,
+                prior_units_sold,
+                conversion_pct,
+                prior_conversion_pct,
+                DIV(numerator * 100 * 1e40, denominator) * 1e-40
+                    AS conversion_change_pp
+            FROM comparable
+        ),
+        ranked AS (
+            SELECT
+                movement.*,
+                ROW_NUMBER() OVER (
+                    ORDER BY conversion_change_pp ASC, dealer_id ASC
+                ) AS rank
+            FROM movement
+        ),
+        limited AS (
+            SELECT * FROM ranked
+            ORDER BY rank
+            LIMIT CAST(:limit AS bigint)
+        )
+        SELECT
+            s.current_month_exists,
+            s.prior_month_exists,
+            r.dealer_id,
+            r.dealer_name,
+            r.region,
+            r.month,
+            r.prior_month,
+            r.leads,
+            r.prior_leads,
+            r.units_sold,
+            r.prior_units_sold,
+            r.conversion_pct,
+            r.prior_conversion_pct,
+            r.conversion_change_pp,
+            r.rank
+        FROM month_status AS s
+        LEFT JOIN limited AS r ON TRUE
+        ORDER BY r.rank
+        """)
+
+    result = pd.read_sql(
+        query,
+        get_engine(),
+        params={
+            "month": month,
+            "prior_month": prior_month,
+            "limit": limit,
+            "min_leads": min_leads,
+        },
+    )
+    if not result["current_month_exists"].iloc[0]:
+        raise MonthNotFoundError(f"Month {month} not found")
+    if not result["prior_month_exists"].iloc[0]:
+        if prior_month is None:
+            raise MonthNotFoundError(f"Month preceding {month} not found")
+        raise MonthNotFoundError(f"Month {prior_month} not found")
+
+    # The status row survives an empty ranking; discard only that sentinel.
+    return result.loc[result["rank"].notna()].drop(
+        columns=["current_month_exists", "prior_month_exists"]
+    )
