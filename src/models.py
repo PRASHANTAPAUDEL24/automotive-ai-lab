@@ -355,3 +355,34 @@ class RankedDealerOpportunity(BaseModel):
             "Global opportunity rank; 1 represents the largest estimated opportunity."
         )
     )
+
+
+class RankedDealerMovement(BaseModel):
+    """One dealer's month-over-month lead-to-sale conversion movement."""
+
+    dealer_id: int = Field(description="Unique dealer identifier.")
+    dealer_name: str = Field(description="Dealer business name.")
+    region: str = Field(description="Dealer sales region.")
+    month: str = Field(description="Reporting month in YYYY-MM format.")
+    prior_month: str = Field(
+        description="Immediately preceding calendar month in YYYY-MM format."
+    )
+    leads: int = Field(description="Recorded leads in the reporting month.")
+    prior_leads: int = Field(description="Recorded leads in the prior month.")
+    units_sold: int = Field(
+        description="Aggregated vehicle sales in the reporting month."
+    )
+    prior_units_sold: int = Field(
+        description="Aggregated vehicle sales in the prior month."
+    )
+    conversion_pct: float = Field(description="Reporting-month sales per 100 leads.")
+    prior_conversion_pct: float = Field(description="Prior-month sales per 100 leads.")
+    conversion_change_pp: float = Field(
+        description=(
+            "Reporting-month minus prior-month conversion rate, in percentage "
+            "points; negative values are deterioration."
+        )
+    )
+    rank: int = Field(
+        description="Global movement rank; 1 represents the largest deterioration."
+    )
